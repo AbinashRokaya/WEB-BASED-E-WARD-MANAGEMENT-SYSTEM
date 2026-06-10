@@ -11,6 +11,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database.db import Base
+from model.user_model import UserModel
+from model.user_model import OtpCode
 
 
 # this is the Alembic Config object, which provides
@@ -34,6 +36,7 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
+
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
