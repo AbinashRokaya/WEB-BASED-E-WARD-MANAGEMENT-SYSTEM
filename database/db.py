@@ -1,18 +1,17 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine  # type: ignore
+from sqlalchemy.orm import sessionmaker  # type: ignore
+from sqlalchemy.ext.declarative import declarative_base  # type: ignore
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-# DATABASE_URL = "postgresql://postgres:password@localhost:5432/my_fastapi_db"
-DATABASE_URL = os.getenv("DATABASE_URL") 
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://eward_user:user123@localhost:5432/E_Ward") 
 
-engine=create_engine(DATABASE_URL)
+engine = create_engine(DATABASE_URL)
 
-Base=declarative_base()
+Base = declarative_base()
 
-db_session=sessionmaker(bind=engine,autoflush=False,autocommit=False)
+db_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def get_db():
@@ -21,3 +20,6 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+__all__ = ["Base", "db_session", "get_db", "engine"]
