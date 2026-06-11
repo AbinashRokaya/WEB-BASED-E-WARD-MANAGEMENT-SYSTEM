@@ -11,7 +11,12 @@ app = FastAPI()
 @app.get("/")
 def read_root():
     return {"message":"Hello World"}
-
+@app.post("/users")
+def create_user(user: dict):
+    return {
+        "message": "User created",#arp
+        "user": user
+    }
 
 app.include_router(user_route.router)   
 
