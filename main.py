@@ -10,11 +10,15 @@ app = FastAPI()
 
 @app.get("/")
 def read_root():
-    return {"message":"Hello World"}
+    return {"message": "Hello World"}
 
 
-app.include_router(user_route.router)   
+@app.post("/new")
+def createnew():
+    return {"message": "Hello World"}
 
-if __name__=="__main__":
-    uvicorn.run("main:app",host="localhost",port=8000,reload=True)
-    
+
+app.include_router(user_route.router)
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="localhost", port=8000, reload=True)
