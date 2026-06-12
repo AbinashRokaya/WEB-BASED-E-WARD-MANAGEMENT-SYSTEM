@@ -1,51 +1,35 @@
-from pydantic import BaseModel ,field_validator
+from pydantic import BaseModel, field_validator
+from uuid import UUID
+from typing import Optional
 import re
 from enum import Enum
-from typing import List,Literal
+from typing import Literal
 
 
-provience_list=["Koshi","Madhesh","Bagmati","Gandaki","Lumbini","Karnali","Sudurpashchim"]
 class UserRegisterationRequest(BaseModel):
-    user_name: str 
-    user_phone_number: str
-    user_citizenship_number: str
-    user_provience: str
-    user_district: str
-    user_municipality: str
-    user_ward_number: int
+    username: str
+    mobile_number: str
+    full_name: str
+    email: Optional[str] = None
 
-    @field_validator("user_phone_number")
+    @field_validator("mobile_number")
     @classmethod
     def validate_phone_number(cls, value):
         if not re.fullmatch(r'^(98|97)\d{8}$', value):
-                raise ValueError(
-                    "Phone number must be a valid Nepali mobile number"
-                )
-        return value
-    
-    @field_validator("user_ward_number")
-    @classmethod
-    def validate_ward_number(cls, value):
-        if value < 1 or value > 32:
-            raise ValueError("Ward number must be between 1 and 32")
-        return value
-    
-    @field_validator("user_provience")
-    @classmethod
-    def validate_provience(cls, value):
-        if value not in provience_list:
-            raise ValueError(f"Provience must be one of the following: {', '.join(provience_list)}")
+            raise ValueError(
+                "Phone number must be a valid Nepali mobile number"
+            )
         return value
 
+
 class UserRegisterationResponse(BaseModel):
-    user_id: int
-    user_name: str 
-    user_phone_number: str
-    user_citizenship_number: str
-    user_provience: str
-    user_district: str
-    user_municipality: str
-    user_ward_number: int
+    user_id: UUID
+    username: str
+    mobile_number: str
+    full_name: str
+    email: Optional[str] = None
+    is_active: bool
+
 
 class OtpCodeRequest(BaseModel):
     otp_phone_number: str
@@ -54,15 +38,17 @@ class OtpCodeRequest(BaseModel):
     @classmethod
     def validate_phone_number(cls, value):
         if not re.fullmatch(r'^(98|97)\d{8}$', value):
-                raise ValueError(
-                    "Phone number must be a valid Nepali mobile number"
-                )
+            raise ValueError(
+                "Phone number must be a valid Nepali mobile number"
+            )
         return value
-    
+
+
 class OtpCodeResponse(BaseModel):
     otp_phone_number: str
     is_used: bool
     expires_at: str
+
 
 class OtpVerificationRequest(BaseModel):
     otp_phone_number: str
@@ -72,11 +58,11 @@ class OtpVerificationRequest(BaseModel):
     @classmethod
     def validate_phone_number(cls, value):
         if not re.fullmatch(r'^(98|97)\d{8}$', value):
-                raise ValueError(
-                    "Phone number must be a valid Nepali mobile number"
-                )
+            raise ValueError(
+                "Phone number must be a valid Nepali mobile number"
+            )
         return value
-    
+
     @field_validator("otp_code")
     @classmethod
     def validate_otp_code(cls, value):
@@ -84,19 +70,19 @@ class OtpVerificationRequest(BaseModel):
             raise ValueError("OTP code must be a 6-digit number")
         return value
 
+
 class Token(BaseModel):
     access_token: str
     token_type: str
 
+
 class TokenData(BaseModel):
-    user_id: int
-    user_name: str 
-    user_phone_number: str
-    user_citizenship_number: str
-    user_provience: str
-    user_district: str
-    user_municipality: str
-    user_ward_number: int
+    user_id: UUID
+    username: str
+    mobile_number: str
+    full_name: str
+    email: Optional[str] = None
+
 
 class TokenDataResponse(BaseModel):
     user_details: TokenData

@@ -1,0 +1,36 @@
+import enum
+
+class RegistrationStatus(str, enum.Enum):
+    DRAFT               = "DRAFT"
+    SUBMITTED           = "SUBMITTED"
+    DOCUMENT_REQUESTED  = "DOCUMENT_REQUESTED"
+    APPROVED            = "APPROVED"
+    CERTIFICATE_ISSUED  = "CERTIFICATE_ISSUED"
+    REJECTED            = "REJECTED"
+
+class GenderType(str, enum.Enum):
+    MALE    = "MALE"
+    FEMALE  = "FEMALE"
+    OTHERS  = "OTHERS"
+
+class BirthKindType(str, enum.Enum):
+    SINGLE          = "SINGLE"
+    TWIN            = "TWIN"
+    TRIPLET_OR_MORE = "TRIPLET OR MORE"
+
+class ParentType(str, enum.Enum):
+    FATHER = "FATHER"
+    MOTHER = "MOTHER"
+
+class UserRoleType(str, enum.Enum):
+    CITIZEN      = "CITIZEN"
+    WARD_OFFICER = "WARD_OFFICER"
+    REGISTRAR    = "REGISTRAR"
+    ADMIN        = "ADMIN"
+
+class DocumentType(str, enum.Enum):
+    CITIZENSHIP_FATHER = "CITIZENSHIP_FATHER"
+    CITIZENSHIP_MOTHER = "CITIZENSHIP_MOTHER"
+    MARRIAGE_CERT      = "MARRIAGE_CERT"
+    RESIDENCE_PROOF    = "RESIDENCE_PROOF"
+    IN_MIGRATION_CERT  = "IN_MIGRATION_CERT"

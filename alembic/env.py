@@ -10,19 +10,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from database.db import Base
-from model.user_model import UserModel
-from model.user_model import OtpCode
 
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-config.set_main_option(
-    "sqlalchemy.url",
-    os.getenv("DATABASE_URL")
-)
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    config.set_main_option("sqlalchemy.url", database_url)
 
 
 
@@ -33,8 +29,21 @@ if config.config_file_name is not None:
 
 # add your model's MetaData object here
 # for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
+from database.db import Base
+
+# Import all models to register them with Base.metadata
+import model.user_model
+import model.address_model
+import model.birth_registration_model
+import model.certificate_model
+import model.child_model
+import model.document_model
+import model.informant_model
+import model.nominee_model
+import model.parent_model
+import model.ward_model
+import model.workflow_log_model
+
 target_metadata = Base.metadata
 
 
@@ -89,6 +98,7 @@ def run_migrations_online() -> None:
         with context.begin_transaction():
             context.run_migrations()
 
+print("REGISTERED TABLES:", Base.metadata.tables.keys())
 
 if context.is_offline_mode():
     run_migrations_offline()
