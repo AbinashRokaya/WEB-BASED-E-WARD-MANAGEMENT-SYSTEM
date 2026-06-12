@@ -1,22 +1,24 @@
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, declarative_base
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
-# DATABASE_URL = "postgresql://postgres:password@localhost:5432/my_fastapi_db"
-DATABASE_URL = os.getenv("DATABASE_URL") 
 
-engine=create_engine(DATABASE_URL)
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://eward_user:user123@localhost:5432/e_ward"
+)
 
-Base=declarative_base()
+engine = create_engine(DATABASE_URL)
 
-db_session=sessionmaker(bind=engine,autoflush=False,autocommit=False)
+Base = declarative_base()
+
+db_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 
 def get_db():
-    db=db_session()
+    db = db_session()
     try:
         yield db
     finally:

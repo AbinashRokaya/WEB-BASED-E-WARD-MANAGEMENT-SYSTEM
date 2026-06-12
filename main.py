@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 import uvicorn
-# from database.db import Base, engine
+from database.db import Base, engine
 from route import user_route
 
 app = FastAPI()
 
 
-# Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 @app.get("/")
 def read_root():
