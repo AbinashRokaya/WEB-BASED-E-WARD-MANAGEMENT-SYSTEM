@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Column, String, Integer, TIMESTAMP
+from sqlalchemy import Column, String, Integer, TIMESTAMP,ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -22,3 +22,4 @@ class Ward(Base):
 
     users               = relationship("UserAccount", back_populates="ward")
     birth_registrations = relationship("BirthRegistration", back_populates="ward")
+

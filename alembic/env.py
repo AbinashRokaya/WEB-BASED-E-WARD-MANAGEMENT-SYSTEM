@@ -10,6 +10,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from database.db import Base
+from model.user_model import UserModel
+from model.user_model import OtpCode
+from model.user_model import UserVerifyModel
 
 
 # this is the Alembic Config object, which provides
