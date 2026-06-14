@@ -14,6 +14,7 @@ from database.db import Base
 from model.user_model import UserModel
 from model.user_model import OtpCode
 from model.user_model import UserVerifyModel
+from model.birth_registration_model import BirthRegistrationModel,RejectModel,ChildModel,ParentModel,NomineeModel,AddressModel
 
 
 # this is the Alembic Config object, which provides
@@ -36,17 +37,17 @@ if config.config_file_name is not None:
 from database.db import Base
 
 # Import all models to register them with Base.metadata
-import model.user_model
-import model.address_model
-import model.birth_registration_model
-import model.certificate_model
-import model.child_model
-import model.document_model
-import model.informant_model
-import model.nominee_model
-import model.parent_model
-import model.ward_model
-import model.workflow_log_model
+# import model.user_model
+# import model.address_model
+# import model.birth_registration_model
+# import model.certificate_model
+# import model.child_model
+# import model.document_model
+# import model.informant_model
+# import model.nominee_model
+# import model.parent_model
+# import model.ward_model
+# import model.workflow_log_model
 
 target_metadata = Base.metadata
 

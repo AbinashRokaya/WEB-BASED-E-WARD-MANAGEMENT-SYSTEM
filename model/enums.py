@@ -13,9 +13,14 @@ class GenderType(str, enum.Enum):
     FEMALE  = "FEMALE"
     OTHERS  = "OTHERS"
 
+class BirthPlaceType(str,enum.Enum):
+    HOSPITAL="HOSPITAL"
+    HOME="HOME"
+    OUTER="OUTER"
+
 class BirthKindType(str, enum.Enum):
     SINGLE          = "SINGLE"
-    TWIN            = "TWIN"
+    TWIN            = "SINGLE"
     TRIPLET_OR_MORE = "TRIPLET OR MORE"
 
 class ParentType(str, enum.Enum):
@@ -34,3 +39,11 @@ class DocumentType(str, enum.Enum):
     MARRIAGE_CERT      = "MARRIAGE_CERT"
     RESIDENCE_PROOF    = "RESIDENCE_PROOF"
     IN_MIGRATION_CERT  = "IN_MIGRATION_CERT"
+
+class RelatioshipType(str,enum.Enum):
+    FATHER="FATHER"
+    MOTHER="MOTHER"
+    GRANDFATHER="GRANDFATHER"
+    GRANDMOTHER="GRANDMOTHER"
+    GUARDIAN="GUARDIAN"
+    OTHER="OTHER"

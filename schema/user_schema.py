@@ -1,13 +1,13 @@
 try:
-    # pydantic v2
+    
     from pydantic import BaseModel, field_validator
 except Exception:
-    # pydantic v1 fallback
+   
     from pydantic import BaseModel
     from pydantic import validator as field_validator
 import re
 from enum import Enum
-from typing import Literal
+from typing import List,Literal
 
 
 provience_list=["Koshi","Madhesh","Bagmati","Gandaki","Lumbini","Karnali","Sudurpashchim"]
@@ -16,28 +16,13 @@ class RegistrationStatus(str,Enum):
     Approved="approved"
     Rejected="rejected"
 class UserRegisterationRequest(BaseModel):
-    username: str
-    mobile_number: str
-    full_name: str
-    email: Optional[str] = None
-
-    @field_validator("mobile_number")
-    @classmethod
-    def validate_phone_number(cls, value):
-        if not re.fullmatch(r'^(98|97)\d{8}$', value):
-            raise ValueError(
-                "Phone number must be a valid Nepali mobile number"
-            )
-        return value
-
-
-class UserRegisterationResponse(BaseModel):
-    user_id: UUID
-    username: str
-    mobile_number: str
-    full_name: str
-    email: Optional[str] = None
-    is_active: bool
+    user_name: str 
+    user_phone_number: str
+    user_citizenship_number: str
+    user_provience: str
+    user_district: str
+    user_municipality: str
+    user_ward_number: int
 
     @field_validator("user_phone_number")
     def validate_phone_number(cls, value):
@@ -87,17 +72,15 @@ class OtpCodeRequest(BaseModel):
     @field_validator("otp_phone_number")
     def validate_phone_number(cls, value):
         if not re.fullmatch(r'^(98|97)\d{8}$', value):
-            raise ValueError(
-                "Phone number must be a valid Nepali mobile number"
-            )
+                raise ValueError(
+                    "Phone number must be a valid Nepali mobile number"
+                )
         return value
-
-
+    
 class OtpCodeResponse(BaseModel):
     otp_phone_number: str
     is_used: bool
     expires_at: str
-
 
 class OtpVerificationRequest(BaseModel):
     otp_phone_number: str
@@ -106,30 +89,30 @@ class OtpVerificationRequest(BaseModel):
     @field_validator("otp_phone_number")
     def validate_phone_number(cls, value):
         if not re.fullmatch(r'^(98|97)\d{8}$', value):
-            raise ValueError(
-                "Phone number must be a valid Nepali mobile number"
-            )
+                raise ValueError(
+                    "Phone number must be a valid Nepali mobile number"
+                )
         return value
-
+    
     @field_validator("otp_code")
     def validate_otp_code(cls, value):
         if not re.fullmatch(r'^\d{6}$', value):
             raise ValueError("OTP code must be a 6-digit number")
         return value
 
-
 class Token(BaseModel):
     access_token: str
     token_type: str
 
-
 class TokenData(BaseModel):
-    user_id: UUID
-    username: str
-    mobile_number: str
-    full_name: str
-    email: Optional[str] = None
-
+    user_id: int
+    user_name: str 
+    user_phone_number: str
+    user_citizenship_number: str
+    user_provience: str
+    user_district: str
+    user_municipality: str
+    user_ward_number: int
 
 class TokenDataResponse(BaseModel):
     user_details: TokenData

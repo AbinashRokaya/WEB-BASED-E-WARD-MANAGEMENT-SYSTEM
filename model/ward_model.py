@@ -6,20 +6,20 @@ from sqlalchemy.sql import func
 from database.db import Base
 
 
-class Ward(Base):
+class WardModel(Base):
     __tablename__ = "ward"
 
     ward_id        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ward_no        = Column(Integer, nullable=False)
-    municipality   = Column(String(100), nullable=False)
-    district       = Column(String(100), nullable=False)
-    province       = Column(String(50), nullable=False)
-    registrar_name = Column(String(150), nullable=False)
-    contact_number = Column(String(50), nullable=False)
-    email          = Column(String(100), unique=True)
+    word_municipality   = Column(String(100), nullable=False)
+    word_district       = Column(String(100), nullable=False)
+    ward_province       = Column(String(50), nullable=False)
+   
+    ward_contact_number = Column(String(50), nullable=False)
+    ward_email          = Column(String(100), unique=True)
     created_at     = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
     updated_at     = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
 
-    users               = relationship("UserAccount", back_populates="ward")
-    birth_registrations = relationship("BirthRegistration", back_populates="ward")
+    # users               = relationship("UserModel", back_populates="ward")
+    birth_registrations = relationship("BirthRegistrationModel", back_populates="ward")
 

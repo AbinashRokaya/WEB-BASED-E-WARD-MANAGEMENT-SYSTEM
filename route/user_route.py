@@ -1,10 +1,10 @@
 from fastapi import HTTPException,Depends,APIRouter,Response
 from fastapi.responses import JSONResponse
 from database.db import get_db
-from enum import Enum
 from schema.user_schema import (UserRegisterationRequest, UserRegisterationResponse,OtpCodeRequest,OtpCodeResponse,
-                                OtpVerificationRequest,Token,TokenData,TokenDataResponse)
-from model.user_model import UserModel
+                                OtpVerificationRequest,Token,TokenData,TokenDataResponse,CitizenVerifyRequest,
+                                UserRegisterationVerificationResponse)
+from model.user_model import UserModel, OtpCode, UserVerifyModel
 from datetime import datetime
 from datetime import timedelta
 from model.user_model import OtpCode
@@ -33,15 +33,15 @@ router = APIRouter(
 @router.post("/")
 def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
     try:
-        existing_user = db.query(UserModel).filter(
-            (UserModel.user_phone_number == request.user_phone_number) |
-            (UserModel.user_citizenship_number == request.user_citizenship_number)
+        existing_user = db.query(UserVerifyModel).filter(
+            (UserVerifyModel.user_phone_number == request.user_phone_number) |
+            (UserVerifyModel.user_citizenship_number == request.user_citizenship_number)
         ).first()
 
         if existing_user:
             raise HTTPException(status_code=400, detail="User with the same phone number or citizenship number already exists")
 
-        new_user = UserModel(
+        new_user = UserVerifyModel(
             user_name=request.user_name,
             user_phone_number=request.user_phone_number,
             user_citizenship_number=request.user_citizenship_number,
@@ -63,7 +63,8 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
             user_provience=new_user.user_provience,
             user_district=new_user.user_district,
             user_municipality=new_user.user_municipality,
-            user_ward_number=new_user.user_ward_number
+            user_ward_number=new_user.user_ward_number,
+            user_status=new_user.user_status
         )
 
         return JSONResponse(
@@ -81,41 +82,57 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
         raise HTTPException(status_code=500,detail=f"{e}")
     
 
-@router.post("/")
-def create_user(
-    request: UserRegisterationRequest,
-    db=Depends(get_db)
-):
-    existing_user = db.query(UserAccount).filter(
-        (UserAccount.mobile_number == request.mobile_number) |
-        (UserAccount.username == request.username)
-    ).first()
+@router.post("/otp")
+def generate_otp(request: OtpCodeRequest, db: get_db = Depends()):
+    try:
+       
+        existing_user = db.query(UserModel).filter(UserModel.user_phone_number == request.otp_phone_number).first()
+        if not existing_user:
+            raise HTTPException(status_code=400, detail="Phone number is not registered")
 
-    if existing_user:
-        raise HTTPException(
-            status_code=400,
-            detail="User already exists"
+       
+        otp_code = str(secrets.randbelow(900000) + 100000)
+  
+        expires_at = datetime.utcnow() + timedelta(minutes=5)  
+
+        new_otp = OtpCode(
+            otp_phone_number=request.otp_phone_number,
+            otp_code=otp_code,
+            expires_at=expires_at
         )
 
-    new_user = UserAccount(
-        username=request.username,
-        mobile_number=request.mobile_number,
-        full_name=request.full_name,
-        email=request.email
-    )
+        db.add(new_otp)
+        db.commit()
+        db.refresh(new_otp)
 
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
 
-    return UserRegisterationResponse(
-        user_id=new_user.user_id,
-        username=new_user.username,
-        mobile_number=new_user.mobile_number,
-        full_name=new_user.full_name,
-        email=new_user.email,
-        is_active=new_user.is_active
-    )
+        message = client.messages.create(
+            body=f"Your OTP code is: {otp_code}",
+            from_=TWILIO_PHONE_NUMBER,
+            to=f"+977{request.otp_phone_number}"
+        )
+        message.sid
+
+        otp_response=OtpCodeResponse(
+            otp_phone_number=new_otp.otp_phone_number,
+            is_used=new_otp.is_used,
+            expires_at=new_otp.expires_at.isoformat()
+        )
+
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 201,
+                "message": "OTP code generated successfully. please check your phone.",
+                "data": otp_response.model_dump()   
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{e}")
     
 @router.post("/otp/verify")
 def verify_otp(request: OtpVerificationRequest,response:Response, db: get_db = Depends()):
@@ -133,7 +150,7 @@ def verify_otp(request: OtpVerificationRequest,response:Response, db: get_db = D
         otp_record.is_used = True
         db.commit()
 
-        user=db.query(UserAccount).filter(UserAccount.mobile_number == request.otp_phone_number).first()
+        user=db.query(UserModel).filter(UserModel.user_phone_number == request.otp_phone_number).first()
 
         if not user:
             raise HTTPException(status_code=400, detail="User not found")
@@ -235,4 +252,3 @@ def verify_user_by_ward_computer(request:CitizenVerifyRequest, db: get_db = Depe
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"{e}")
     
-
