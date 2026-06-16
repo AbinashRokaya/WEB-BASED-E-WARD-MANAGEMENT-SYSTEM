@@ -10,9 +10,10 @@ class WardModel(Base):
     __tablename__ = "ward"
 
     ward_id        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ward_name = Column(String)
     ward_no        = Column(Integer, nullable=False)
-    word_municipality   = Column(String(100), nullable=False)
-    word_district       = Column(String(100), nullable=False)
+    ward_municipality   = Column(String(100), nullable=False)
+    ward_district       = Column(String(100), nullable=False)
     ward_province       = Column(String(50), nullable=False)
    
     ward_contact_number = Column(String(50), nullable=False)
