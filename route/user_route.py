@@ -171,8 +171,8 @@ def verify_otp(request: OtpVerificationRequest,response:Response, db: get_db = D
     value=access_token,
     httponly=True,
     max_age=3600,
-    samesite="none",
-    secure=True,
+    samesite="lax", 
+    secure=False,   
     path="/",
 )
 

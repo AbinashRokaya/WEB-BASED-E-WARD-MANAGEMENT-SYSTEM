@@ -173,8 +173,9 @@ class AddressModel(Base):
     __tablename__="address"
 
     address_id=Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    registration_id = Column(UUID(as_uuid=True), ForeignKey("birth_registration.registration_id", ondelete="CASCADE"), nullable=False)
 
-    child_provience = Column(String)
+    child_province = Column(String)
     child_district = Column(String)
     child_municipality = Column(String)
     child_ward_number = Column(Integer)

@@ -26,6 +26,9 @@ class UserModel(Base):
         server_default=func.now(),
         onupdate=func.now()
     )
+    birth_registrations = relationship("BirthRegistrationModel", back_populates="submitted_by_user")
+
+
 
     
 
@@ -54,6 +57,7 @@ class OtpCode(Base):
         onupdate=func.now()
     )
 
+   
 
 
 

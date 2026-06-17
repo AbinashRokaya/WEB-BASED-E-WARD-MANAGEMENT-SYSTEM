@@ -17,7 +17,7 @@ router = APIRouter(
 @router.post("/ward")
 def create_ward(request: CreateWordRequest, db=Depends(get_db)):
     try:
-        # ✅ Fix 1: Added .first() so it returns a record or None, not a query object
+        
         existing_ward = db.query(WardModel).filter(
             WardModel.ward_province == request.ward_province,
             WardModel.ward_district == request.ward_district,
@@ -25,7 +25,7 @@ def create_ward(request: CreateWordRequest, db=Depends(get_db)):
             WardModel.ward_name == request.ward_name
         ).first()
 
-        # ✅ Fix 2: Now this check actually works correctly
+       
         if existing_ward:
             raise HTTPException(
                 status_code=400,
