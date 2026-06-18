@@ -12,7 +12,7 @@ import secrets
 import os
 from dotenv import load_dotenv
 from twilio.rest import Client
-
+from model.ward_model import WardModel
 from auth.jwt import create_access_token, verify_token  
 
 load_dotenv()
@@ -33,6 +33,11 @@ router = APIRouter(
 @router.post("/")
 def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
     try:
+        new_ward=db.query(WardModel).filter((UserModel.user_provience==request.user_provience)|(UserModel.user_district==request.user_district)|(UserModel.user_municipality==request.user_municipality)|(UserModel.user_ward_number==request.user_ward_number)).first()
+        if not new_ward:
+            raise HTTPException(status_code=400, detail="There is no ward")
+
+
         existing_user = db.query(UserVerifyModel).filter(
             (UserVerifyModel.user_phone_number == request.user_phone_number) |
             (UserVerifyModel.user_citizenship_number == request.user_citizenship_number)
@@ -163,18 +168,13 @@ def verify_otp(request: OtpVerificationRequest,response:Response, db: get_db = D
             user_provience=user.user_provience,
             user_district=user.user_district,
             user_municipality=user.user_municipality,
-            user_ward_number=user.user_ward_number
+            user_ward_number=user.user_ward_number,
+            user_role=user.user_role
         )
-        access_token = create_access_token(data=user_data.model_dump())
-        response.set_cookie(
-    key="access_token",
-    value=access_token,
-    httponly=True,
-    max_age=3600,
-    samesite="lax", 
-    secure=False,   
-    path="/",
+        access_token = create_access_token(
+    data=user_data.model_dump()
 )
+        
 
         token_response=TokenDataResponse(
             user_details=user_data,
@@ -183,7 +183,7 @@ def verify_otp(request: OtpVerificationRequest,response:Response, db: get_db = D
         )
 
 
-        return JSONResponse(
+        json_response =JSONResponse(
             status_code=200,
             content={
                 "success": True,
@@ -192,6 +192,17 @@ def verify_otp(request: OtpVerificationRequest,response:Response, db: get_db = D
                 "data": token_response.model_dump()
             }
         )
+        json_response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            max_age=3600,
+            samesite="lax",
+            secure=False,
+            path="/",
+        )
+
+        return json_response
     
     except HTTPException:
         raise

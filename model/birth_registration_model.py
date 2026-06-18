@@ -5,8 +5,8 @@ from sqlalchemy.orm import relationship
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.sql import func
 from database.db import Base
-from model.enums import RegistrationStatus
-from model.enums import GenderType, BirthKindType,ParentType,DocumentType,BirthPlaceType,RelatioshipType
+from model.enums import BirthRegistrationStatus
+from model.enums import GenderType, BirthKindType,ParentType,DocumentType,BirthPlaceType,RelatioshipType,BirthRegistrationStatus
 from model.ward_model import WardModel
 
 class BirthRegistrationModel(Base):
@@ -15,7 +15,7 @@ class BirthRegistrationModel(Base):
     registration_id      =          Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     register_ward_id              = Column(UUID(as_uuid=True), ForeignKey("ward.ward_id"), nullable=False)
     register_submitted_by         = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=False)
-    register_status               = Column(SAEnum(RegistrationStatus), nullable=False, default=RegistrationStatus.DRAFT)
+    register_status               = Column(SAEnum(BirthRegistrationStatus), nullable=False, default=BirthRegistrationStatus.DRAFT)
     created_at = Column(
         DateTime,
         server_default=func.now()
@@ -35,7 +35,11 @@ class BirthRegistrationModel(Base):
     parents           = relationship("ParentModel", back_populates="registration")
     nominees          = relationship("NomineeModel", back_populates="registration")
     reject = relationship("RejectModel",back_populates="registration")
-    address = relationship("AddressModel",back_populates="registration")
+    address = relationship(
+    "AddressModel",
+    back_populates="registration",
+    uselist=False
+)
 
 
     # informant         = relationship("Informant", back_populates="registration", uselist=False)
@@ -81,7 +85,7 @@ class ParentModel(Base):
     parent_middle_name     = Column(String(100),default=None)
     parent_last_name        =Column(String(100))
     parent_type     = Column(SAEnum(ParentType), nullable=False)
-    parrent_citizenship_no  = Column(String(50), nullable=False)
+    parent_citizenship_no  = Column(String(50), nullable=False)
     parent_nid_no          = Column(String(50), nullable=False)
     # parent_address_id      = Column(UUID(as_uuid=True), ForeignKey("address.address_id", ondelete="SET NULL"))
     parent_occupation      = Column(String(100))
@@ -181,4 +185,7 @@ class AddressModel(Base):
     child_ward_number = Column(Integer)
     child_tole=Column(String)
 
-    registration    = relationship("BirthRegistrationModel", back_populates="address")
+    registration = relationship(
+    "BirthRegistrationModel",
+    back_populates="address"
+)

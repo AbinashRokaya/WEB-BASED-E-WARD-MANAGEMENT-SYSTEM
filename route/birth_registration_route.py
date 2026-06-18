@@ -9,14 +9,14 @@ from model.birth_registration_model import (
 )
 from model.ward_model import WardModel
 from model.user_model import UserModel
-from model.enums import RegistrationStatus
+from model.enums import BirthRegistrationStatus
 from schema.birth_registration_schema import (
     BirthRegistrationRequest, BirthRegistrationResponse,
     UpdateRegistrationRequest, RejectRequest, RejectResponse,
-    UpdateParentRequest, UpdateNomineeRequest, UpdateAddressRequest
+    UpdateParentRequest, UpdateNomineeRequest, UpdateAddressRequest,AddressResponse
 
 )
-from auth.current_user import get_current_user,require_permission
+from auth.current_user import require_permission
 
 router = APIRouter(
     prefix="/v1/birth-registration",
@@ -41,7 +41,7 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
 
       
         user = db.query(UserModel).filter(
-            UserModel.user_id == current_user.user_name
+            UserModel.user_id == current_user.user_id
         ).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -55,7 +55,7 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
         registration = BirthRegistrationModel(
             register_ward_id=request.register_ward_id,
             register_submitted_by=request.register_submitted_by,
-            register_status=RegistrationStatus.DRAFT
+            register_status=BirthRegistrationStatus.DRAFT
         )
         db.add(registration)
         db.flush()  
@@ -85,9 +85,13 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
 
         
         address = AddressModel(
-            registration_id=registration.registration_id,
-            **request.address.model_dump()
-        )
+    registration_id=registration.registration_id,
+    child_province=request.address.child_provience,
+    child_district=request.address.child_district,
+    child_municipality=request.address.child_municipality,
+    child_ward_number=request.address.child_ward_number,
+    child_tole=request.address.child_tole,
+)
         db.add(address)
 
         db.commit()
@@ -113,7 +117,7 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
 
 @router.get("/")
 def get_all_registrations(
-    status: RegistrationStatus = None,
+    status: BirthRegistrationStatus = None,
     ward_id: UUID = None,
     db=Depends(get_db)
 ):
@@ -186,7 +190,7 @@ def update_registration(
             raise HTTPException(status_code=404, detail="Registration not found")
 
        
-        if registration.register_status == RegistrationStatus.APPROVED:
+        if registration.register_status == BirthRegistrationStatus.APPROVED:
             raise HTTPException(
                 status_code=400,
                 detail="Approved registrations cannot be edited"
@@ -238,7 +242,7 @@ def delete_registration(registration_id: UUID, db=Depends(get_db)):
         if not registration:
             raise HTTPException(status_code=404, detail="Registration not found")
 
-        if registration.register_status != RegistrationStatus.DRAFT:
+        if registration.register_status != BirthRegistrationStatus.DRAFT:
             raise HTTPException(
                 status_code=400,
                 detail="Only DRAFT registrations can be deleted"
@@ -358,14 +362,14 @@ def reject_registration(
         if not registration:
             raise HTTPException(status_code=404, detail="Registration not found")
 
-        if registration.register_status != RegistrationStatus.SUBMITTED:
+        if registration.register_status != BirthRegistrationStatus.SUBMITTED:
             raise HTTPException(
                 status_code=400,
                 detail="Only SUBMITTED registrations can be rejected"
             )
 
      
-        registration.register_status = RegistrationStatus.REJECTED
+        registration.register_status = BirthRegistrationStatus.REJECTED
 
         
         reject = RejectModel(
@@ -402,13 +406,13 @@ def approve_registration(registration_id: UUID, db=Depends(get_db)):
         if not registration:
             raise HTTPException(status_code=404, detail="Registration not found")
 
-        if registration.register_status != RegistrationStatus.SUBMITTED:
+        if registration.register_status != BirthRegistrationStatus.SUBMITTED:
             raise HTTPException(
                 status_code=400,
                 detail="Only SUBMITTED registrations can be approved"
             )
 
-        registration.register_status = RegistrationStatus.APPROVED
+        registration.register_status = BirthRegistrationStatus.APPROVED
         db.commit()
 
         return JSONResponse(

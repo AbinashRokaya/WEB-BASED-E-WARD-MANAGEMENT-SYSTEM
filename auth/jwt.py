@@ -11,12 +11,20 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 ALGORITHM = os.getenv("ALGORITHM")
 
-def create_access_token(data:dict):
+def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+    expire = datetime.utcnow() + timedelta(
+        minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+
+    to_encode.update({"exp": expire})
+
+    return jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm=ALGORITHM
+    )
 def verify_token(token: str):
    
 

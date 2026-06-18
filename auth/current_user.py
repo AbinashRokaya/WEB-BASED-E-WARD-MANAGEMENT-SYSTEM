@@ -1,47 +1,54 @@
-from fastapi import Depends, HTTPException, status,Cookie
+from fastapi import Depends, HTTPException, status, Cookie
 from fastapi.security import OAuth2PasswordBearer
 from auth.jwt import verify_token
-from schema.user_schema import TokenData,Action,Permission_Role,RoleSchema
-from typing import Annotated
+from schema.user_schema import TokenData, Action, Permission_Role, RoleSchema
+from typing import Annotated, Optional
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="v1/login")
 
-from typing import Annotated
-from fastapi import Cookie
 
 def get_current_user(
-    access_token: Annotated[str | None, Cookie()] = None
+    access_token: Annotated[Optional[str], Cookie()] = None
 ):
-    
-    if access_token is None:
-        raise HTTPException(
-            status_code=401,
-            detail="Token missing"
-        )
+    if not access_token:
+        raise HTTPException(status_code=401, detail="Token missing")
 
-    payload = verify_token(token=access_token)
+    try:
+        payload = verify_token(token=access_token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    user_name = payload.get("user_name")
-    user_email = payload.get("user_email")
-    user_id = payload.get("user_id")
-    user_role = payload.get("user_role")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=401, detail="Invalid token payload")
+
     
 
     return TokenData(
-        user_name=user_name,
-        user_email=user_email,
-        user_id=user_id,
-        user_role=user_role
-    )
+    user_id=payload.get("user_id"),
+    user_name=payload.get("user_name"),
+    user_phone_number=payload.get("user_phone_number"),
+    user_citizenship_number=payload.get("user_citizenship_number"),
+    user_provience=payload.get("user_provience"),
+    user_district=payload.get("user_district"),
+    user_municipality=payload.get("user_municipality"),
+    user_ward_number=payload.get("user_ward_number"),
+    user_role=payload.get("user_role")
+)
 
 
-def require_permission(action:Action):
+def require_permission(action: Action):
     def dependency(user=Depends(get_current_user)):
-        role=user.user_role
-        if action not in Permission_Role.get(RoleSchema(role),set()):
-             raise HTTPException(
+        role_val = user.user_role
+        try:
+            role_enum = role_val if isinstance(role_val, RoleSchema) else RoleSchema(role_val)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid user role in token")
+
+        allowed = Permission_Role.get(role_enum, set())
+        if action not in allowed:
+            raise HTTPException(
                 status_code=403,
-                detail=f"{role} is not allowed to perform '{action}'"
+                detail=f"{role_enum} is not allowed to perform '{action}'"
             )
         return user
     return dependency

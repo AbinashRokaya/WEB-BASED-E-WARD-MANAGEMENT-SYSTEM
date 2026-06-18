@@ -111,6 +111,7 @@ class TokenData(BaseModel):
     user_citizenship_number: str
     user_provience: str
     user_district: str
+    user_role:str
     user_municipality: str
     user_ward_number: int
 

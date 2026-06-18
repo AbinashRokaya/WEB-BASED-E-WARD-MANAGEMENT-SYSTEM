@@ -1,9 +1,9 @@
 
-from pydantic import BaseModel
+from pydantic import BaseModel,ConfigDict
 from typing import Optional, List
 from uuid import UUID
 from model.enums import (
-    RegistrationStatus, GenderType, BirthKindType,
+    BirthRegistrationStatus, GenderType, BirthKindType,
     BirthPlaceType, ParentType, RelatioshipType
 )
 
@@ -44,7 +44,7 @@ class ParentRequest(BaseModel):
     parent_middle_name: Optional[str] = None
     parent_last_name: str
     parent_type: ParentType
-    parrent_citizenship_no: str
+    parent_citizenship_no: str
     parent_nid_no: str
     parent_occupation: Optional[str] = None
     parent_nationality: str = "NEPALESE"
@@ -61,7 +61,7 @@ class UpdateParentRequest(BaseModel):
     parent_middle_name: Optional[str] = None
     parent_last_name: Optional[str] = None
     parent_type: Optional[ParentType] = None
-    parrent_citizenship_no: Optional[str] = None
+    parent_citizenship_no: Optional[str] = None
     parent_nid_no: Optional[str] = None
     parent_occupation: Optional[str] = None
     parent_nationality: Optional[str] = None
@@ -115,7 +115,15 @@ class UpdateAddressRequest(BaseModel):
     child_ward_number: Optional[int] = None
     child_tole: Optional[str] = None
 
+class AddressResponse(BaseModel):
+    address_id: UUID
+    child_province: str      # ✅ matches SQLAlchemy model
+    child_district: str
+    child_municipality: str
+    child_ward_number: int
+    child_tole: str | None = None
 
+    model_config = ConfigDict(from_attributes=True)
 
 class RejectRequest(BaseModel):
     reject_text: str
@@ -133,14 +141,14 @@ class BirthRegistrationRequest(BaseModel):
     register_submitted_by: int
     child: ChildRequest
     parents: List[ParentRequest]
-    nominees: NomineeRequest
+    nominees: List[NomineeRequest]
     address: AddressRequest
 
 class BirthRegistrationResponse(BaseModel):
     
     register_ward_id: UUID
     register_submitted_by: int
-    register_status: RegistrationStatus
+    register_status: BirthRegistrationStatus
     child: Optional[ChildResponse] = None
     parents: Optional[List[ParentResponse]] = []
     nominees: Optional[List[NomineeResponse]] = []
@@ -150,6 +158,6 @@ class BirthRegistrationResponse(BaseModel):
         from_attributes = True
 
 class UpdateRegistrationRequest(BaseModel):
-    register_status: Optional[RegistrationStatus] = None
+    register_status: Optional[BirthRegistrationStatus] = None
     child: Optional[UpdateChildRequest] = None
     address: Optional[UpdateAddressRequest] = None

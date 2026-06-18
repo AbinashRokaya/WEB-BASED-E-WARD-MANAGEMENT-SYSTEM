@@ -1,6 +1,6 @@
 import enum
 
-class RegistrationStatus(str, enum.Enum):
+class BirthRegistrationStatus(str, enum.Enum):
     DRAFT               = "DRAFT"
     SUBMITTED           = "SUBMITTED"
     DOCUMENT_REQUESTED  = "DOCUMENT_REQUESTED"
