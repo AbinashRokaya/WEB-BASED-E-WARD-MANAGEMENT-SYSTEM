@@ -32,7 +32,8 @@ def get_current_user(
     user_district=payload.get("user_district"),
     user_municipality=payload.get("user_municipality"),
     user_ward_number=payload.get("user_ward_number"),
-    user_role=payload.get("user_role")
+    user_role=payload.get("user_role"),
+    user_ward_id=payload.get("user_ward_id")
 )
 
 

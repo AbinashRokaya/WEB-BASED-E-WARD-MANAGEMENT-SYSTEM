@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String,Boolean, DateTime,func,Enum
+from sqlalchemy import Column, Integer, String,Boolean, DateTime,func,Enum,ForeignKey
 from database.db import Base
 from schema.user_schema import RoleSchema, RegistrationStatus
 from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -15,6 +16,11 @@ class UserModel(Base):
     user_municipality = Column(String)
     user_ward_number = Column(Integer)
     user_role = Column(Enum(RoleSchema), default=RoleSchema.Citizen)
+    ward_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ward.ward_id"),
+        nullable=True
+    )
 
     reated_at = Column(
         DateTime,
@@ -27,6 +33,7 @@ class UserModel(Base):
         onupdate=func.now()
     )
     birth_registrations = relationship("BirthRegistrationModel", back_populates="submitted_by_user")
+    ward=relationship("WardModel",back_populates="user")
 
 
 
@@ -74,6 +81,11 @@ class UserVerifyModel(Base):
     user_municipality = Column(String)
     user_ward_number = Column(Integer)
     user_role = Column(Enum(RoleSchema), default=RoleSchema.Citizen)
+    ward_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ward.ward_id"),
+        nullable=True
+    )
 
     user_status = Column(Enum(RegistrationStatus), default=RegistrationStatus.Pending)
 
@@ -87,6 +99,9 @@ class UserVerifyModel(Base):
         server_default=func.now(),
         onupdate=func.now()
     )
+
+    wardVerify=relationship("WardModel",back_populates="userVerify")
+
 
 
 

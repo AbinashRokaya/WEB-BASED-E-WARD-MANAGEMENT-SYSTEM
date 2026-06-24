@@ -2,7 +2,7 @@ from fastapi import HTTPException, APIRouter, Depends
 from fastapi.responses import JSONResponse
 from database.db import get_db
 from model.ward_model import WardModel
-from schema.admin_schema import CreateWordRequest, CreateWordResponse,UpdateWardRequest,AssignOfficerRequest, UpdateOfficerRequest, OfficerResponse
+from schema.admin_schema import CreateWordRequest, CreateWordResponse,UpdateWardRequest,AssignOfficerRequest, UpdateOfficerRequest, OfficerResponse,GetAllWardResponse
 from model.user_model import UserModel
 from schema.user_schema import RoleSchema
 from typing import List
@@ -73,9 +73,43 @@ def create_ward(request: CreateWordRequest, db=Depends(get_db)):
         
         raise HTTPException(status_code=500, detail=str(e))
     
+@router.get("/ward")
+def get_all_ward(db=Depends(get_db)):
+    try:
+        ward=db.query(WardModel).all()
+        if not ward:
+            raise HTTPException(status_code=404, detail="Ward not found")
+        
+        ward_list=[CreateWordResponse(
+             ward_id=w.ward_id,
+            ward_no=w.ward_no,
+            ward_name=w.ward_name,
+            ward_municipality=w.ward_municipality,  
+            ward_district=w.ward_district,
+            ward_province=w.ward_province,
+            ward_contact_number=w.ward_contact_number,
+            ward_email=w.ward_email
+        )for w in ward]
+        response_data= GetAllWardResponse(ward_list=ward_list)
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "message": "New ward is created",
+                "data":response_data.model_dump(mode="json")
+            }
+        )
+
+    except HTTPException:
+            raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/ward/{ward_id}")
-def update_ward(ward_id: int, request: UpdateWardRequest, db=Depends(get_db)):
+def update_ward(ward_id: str, request: UpdateWardRequest, db=Depends(get_db)):
     try:
         ward = db.query(WardModel).filter(WardModel.ward_id == ward_id).first()
         if not ward:
@@ -120,7 +154,7 @@ def update_ward(ward_id: int, request: UpdateWardRequest, db=Depends(get_db)):
                 "success": True,
                 "status_code": 200,
                 "message": "Ward updated successfully",
-                "data": updated_ward_response.model_dump()
+                "data": updated_ward_response.model_dump(mode="json")
             }
         )
 
@@ -226,7 +260,7 @@ def assign_officer(request: AssignOfficerRequest, db=Depends(get_db)):
             user_name=request.user_name,
             user_phone_number=request.user_phone_number,
             user_citizenship_number=request.user_citizenship_number,
-            user_provience=request.user_province,   # match your model typo
+            user_provience=request.user_province,  
             user_district=request.user_district,
             user_municipality=request.user_municipality,
             user_ward_number=request.user_ward_number,
@@ -237,13 +271,25 @@ def assign_officer(request: AssignOfficerRequest, db=Depends(get_db)):
         db.commit()
         db.refresh(new_officer)
 
+        response=OfficerResponse(
+            user_id=new_officer.user_id,
+            user_name= new_officer.user_name,
+    user_phone_number= new_officer.user_phone_number,
+    user_citizenship_number= new_officer.user_citizenship_number,
+    user_province= new_officer.user_provience,
+    user_district= new_officer.user_district,
+    user_municipality= new_officer.user_municipality,
+    user_ward_number= new_officer.user_ward_number,
+    user_role= new_officer.user_role
+        )
+
         return JSONResponse(
             status_code=201,
             content={
                 "success": True,
                 "status_code": 201,
                 "message": "Officer assigned successfully",
-                "data": OfficerResponse.from_orm(new_officer).model_dump()
+                "data": response.model_dump()
             }
         )
 
@@ -313,6 +359,42 @@ def get_officer(user_id: int, db=Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/users/officers")
+def get_all_officers(db=Depends(get_db)):
+    try:
+        officers = db.query(UserModel).filter(
+            UserModel.user_role != RoleSchema.Citizen.value
+        ).all()
+
+        if not officers:
+            raise HTTPException(
+                status_code=404,
+                detail="No officers found"
+            )
+
+        officer_list = [
+            OfficerResponse.model_validate(officer).model_dump()
+            for officer in officers
+        ]
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "message": "Officers fetched successfully",
+                "data": officer_list
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
     
 @router.put("/user/{user_id}")
 def update_officer(user_id: int, request: UpdateOfficerRequest, db=Depends(get_db)):

@@ -1,14 +1,14 @@
 try:
     
-    from pydantic import BaseModel, field_validator
+    from pydantic import BaseModel, field_validator,ConfigDict
 except Exception:
    
     from pydantic import BaseModel
-    from pydantic import validator as field_validator
+    from pydantic import validator as field_validator,ConfigDict
 import re
 from enum import Enum
 from typing import List,Literal
-
+from uuid import UUID
 
 provience_list=["Koshi","Madhesh","Bagmati","Gandaki","Lumbini","Karnali","Sudurpashchim"]
 class RegistrationStatus(str,Enum):
@@ -114,6 +114,7 @@ class TokenData(BaseModel):
     user_role:str
     user_municipality: str
     user_ward_number: int
+    user_ward_id:UUID| None = None
 
 class TokenDataResponse(BaseModel):
     user_details: TokenData
@@ -141,3 +142,22 @@ class CitizenVerifyRequest(BaseModel):
      user_id:int
      user_phone_number:str
      user_status:RegistrationStatus
+
+
+class UserResponse(BaseModel):
+    user_id: int
+    user_name: str
+    user_phone_number: str
+    user_citizenship_number: str
+    user_provience: str
+    user_district: str
+    user_municipality: str
+    user_ward_number: int
+    user_role: RoleSchema
+    ward_id:UUID
+    user_status:RegistrationStatus
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ListUserResponse(BaseModel):
+    user_list:List[UserResponse]

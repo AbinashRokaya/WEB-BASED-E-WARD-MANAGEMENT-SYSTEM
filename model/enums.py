@@ -7,6 +7,7 @@ class BirthRegistrationStatus(str, enum.Enum):
     APPROVED            = "APPROVED"
     CERTIFICATE_ISSUED  = "CERTIFICATE_ISSUED"
     REJECTED            = "REJECTED"
+    VERIFIED=" VERIFIED"
 
 class GenderType(str, enum.Enum):
     MALE    = "MALE"

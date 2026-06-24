@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from database.db import get_db
 from schema.user_schema import (UserRegisterationRequest, UserRegisterationResponse,OtpCodeRequest,OtpCodeResponse,
                                 OtpVerificationRequest,Token,TokenData,TokenDataResponse,CitizenVerifyRequest,
-                                UserRegisterationVerificationResponse)
+                                UserRegisterationVerificationResponse,UserResponse,ListUserResponse)
 from model.user_model import UserModel, OtpCode, UserVerifyModel
 from datetime import datetime
 from datetime import timedelta
@@ -14,8 +14,31 @@ from dotenv import load_dotenv
 from twilio.rest import Client
 from model.ward_model import WardModel
 from auth.jwt import create_access_token, verify_token  
+from twilio.base.exceptions import TwilioRestException
+load_dotenv()
+from dotenv import load_dotenv
+
+import os
 
 load_dotenv()
+
+TWILIO_ACCOUNT_SID = os.getenv("ACCOUNT_SID")
+
+TWILIO_AUTH_TOKEN = os.getenv("AUTH_TOKEN")
+
+TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+
+print("SID:", repr(TWILIO_ACCOUNT_SID))
+
+print("TOKEN:", repr(TWILIO_AUTH_TOKEN))
+
+print("PHONE:", repr(TWILIO_PHONE_NUMBER))
+
+print("SID LEN:", len(TWILIO_ACCOUNT_SID) if TWILIO_ACCOUNT_SID else 0)
+
+print("TOKEN LEN:", len(TWILIO_AUTH_TOKEN) if TWILIO_AUTH_TOKEN else 0)
+
+client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 TWILIO_ACCOUNT_SID = os.getenv("ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.getenv("AUTH_TOKEN")
@@ -45,6 +68,31 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
 
         if existing_user:
             raise HTTPException(status_code=400, detail="User with the same phone number or citizenship number already exists")
+        
+        existing_user = db.query(UserModel).filter(
+            (UserModel.user_phone_number == request.user_phone_number) |
+            (UserModel.user_citizenship_number == request.user_citizenship_number)
+        ).first()
+
+        if existing_user:
+            raise HTTPException(status_code=400, detail="User with the same phone number or citizenship number already exists")
+        
+        ward = (
+            db.query(WardModel)
+            .filter(
+                WardModel.ward_province == request.user_provience,
+                WardModel.ward_district == request.user_district,
+                WardModel.ward_municipality == request.user_municipality,
+                WardModel.ward_no == request.user_ward_number,
+            )
+            .first()
+        )
+
+        if ward is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Ward does not exist. Please select a valid address."
+            )
 
         new_user = UserVerifyModel(
             user_name=request.user_name,
@@ -53,7 +101,8 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
             user_provience=request.user_provience,
             user_district=request.user_district,
             user_municipality=request.user_municipality,
-            user_ward_number=request.user_ward_number
+            user_ward_number=request.user_ward_number,
+            ward_id=ward.ward_id
         )
 
         db.add(new_user)
@@ -86,6 +135,42 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
     except Exception as e:
         raise HTTPException(status_code=500,detail=f"{e}")
     
+@router.get("/")
+def get_all_users(db=Depends(get_db)):
+    users = db.query(UserVerifyModel).all()
+
+    response=[UserResponse(
+        user_id=u.user_id,
+    user_name=u.user_name,
+    user_phone_number=u.user_phone_number,
+    user_citizenship_number=u.user_citizenship_number,
+    user_provience=u.user_provience,
+    user_district=u.user_district,
+    user_municipality=u.user_municipality,
+    user_ward_number=u.user_ward_number,
+    user_role=u.user_role,
+    ward_id=u.wardVerify.ward_id,
+    user_status=u.user_status
+
+    )for u in users]
+
+
+    list=ListUserResponse(user_list=response)
+
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "status_code": 200,
+            "message": "Users fetched successfully",
+            "total": len(users),
+            "data": 
+                list.model_dump(mode="json")
+                
+            
+        }
+    )
 
 @router.post("/otp")
 def generate_otp(request: OtpCodeRequest, db: get_db = Depends()):
@@ -111,11 +196,14 @@ def generate_otp(request: OtpCodeRequest, db: get_db = Depends()):
         db.refresh(new_otp)
 
 
-        message = client.messages.create(
-            body=f"Your OTP code is: {otp_code}",
-            from_=TWILIO_PHONE_NUMBER,
-            to=f"+977{request.otp_phone_number}"
-        )
+        try:
+            message = client.messages.create(
+                body=f"Your OTP code is: {otp_code}",
+                from_=TWILIO_PHONE_NUMBER,
+                to=f"+977{request.otp_phone_number}"
+            )
+        except TwilioRestException as e:
+            raise HTTPException(status_code=502, detail=f"Twilio error {e.code}: {e.msg}")
         message.sid
 
         otp_response=OtpCodeResponse(
@@ -169,7 +257,8 @@ def verify_otp(request: OtpVerificationRequest,response:Response, db: get_db = D
             user_district=user.user_district,
             user_municipality=user.user_municipality,
             user_ward_number=user.user_ward_number,
-            user_role=user.user_role
+            user_role=user.user_role,
+            user_ward_id=user.ward_id
         )
         access_token = create_access_token(
     data=user_data.model_dump()
@@ -248,6 +337,8 @@ def verify_user_by_ward_computer(request:CitizenVerifyRequest, db: get_db = Depe
             user_ward_number=new_user.user_ward_number,
             
         )
+        
+        
 
         return JSONResponse(
             status_code=200,

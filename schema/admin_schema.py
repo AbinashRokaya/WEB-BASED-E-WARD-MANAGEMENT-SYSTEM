@@ -1,8 +1,9 @@
-from pydantic import BaseModel,field_validator,EmailStr
+from pydantic import BaseModel,field_validator,EmailStr,ConfigDict
 from typing import Optional
 from typing import Optional
 from schema.user_schema import RoleSchema
-
+from uuid import UUID
+from typing import List
 provience_list=["Koshi","Madhesh","Bagmati","Gandaki","Lumbini","Karnali","Sudurpashchim"]
 
 class CreateWordRequest(BaseModel):
@@ -25,15 +26,17 @@ class CreateWordRequest(BaseModel):
 
 
 class CreateWordResponse(BaseModel):
-    ward_id:str
+    ward_id:UUID
     ward_name:str
     ward_no:int 
     ward_municipality:str 
     ward_district:str 
-    ward_provience:str 
+    ward_province:str 
     ward_contact_number:str 
     ward_email:EmailStr
 
+class GetAllWardResponse(BaseModel):
+    ward_list:List[CreateWordResponse]
 class UpdateWardRequest(BaseModel):
     ward_no: Optional[int] = None
     ward_name: Optional[str] = None
@@ -54,7 +57,14 @@ class AssignOfficerRequest(BaseModel):
     user_ward_number: int
     user_role: RoleSchema
 
+# class OfficerResponse(BaseModel):
+#     user_id: int
+#     user_full_name: str
+#     user_email: EmailStr
+#     user_phone_number: str
+#     user_role: str
 
+#     model_config = ConfigDict(from_attributes=True)
 class UpdateOfficerRequest(BaseModel):
     user_name: Optional[str] = None
     user_phone_number: Optional[str] = None
@@ -71,7 +81,7 @@ class OfficerResponse(BaseModel):
     user_name: str
     user_phone_number: str
     user_citizenship_number: str
-    user_province: str
+    user_provience: str
     user_district: str
     user_municipality: str
     user_ward_number: int

@@ -161,3 +161,17 @@ class UpdateRegistrationRequest(BaseModel):
     register_status: Optional[BirthRegistrationStatus] = None
     child: Optional[UpdateChildRequest] = None
     address: Optional[UpdateAddressRequest] = None
+
+class BirthRegistrationResponseAll(BaseModel):
+    registration_id: UUID
+    register_ward_id: UUID
+    register_submitted_by: int
+    register_status: BirthRegistrationStatus
+
+    child: Optional[ChildResponse] = None
+    parents: List[ParentResponse] = []
+    nominees: List[NomineeResponse] = []
+    address: Optional[AddressResponse] = None
+    reject: List[RejectResponse] = []
+
+    model_config = ConfigDict(from_attributes=True)

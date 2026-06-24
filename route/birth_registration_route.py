@@ -13,7 +13,7 @@ from model.enums import BirthRegistrationStatus
 from schema.birth_registration_schema import (
     BirthRegistrationRequest, BirthRegistrationResponse,
     UpdateRegistrationRequest, RejectRequest, RejectResponse,
-    UpdateParentRequest, UpdateNomineeRequest, UpdateAddressRequest,AddressResponse
+    UpdateParentRequest, UpdateNomineeRequest, UpdateAddressRequest,AddressResponse,BirthRegistrationResponseAll
 
 )
 from auth.current_user import require_permission
@@ -55,7 +55,7 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
         registration = BirthRegistrationModel(
             register_ward_id=request.register_ward_id,
             register_submitted_by=request.register_submitted_by,
-            register_status=BirthRegistrationStatus.DRAFT
+            register_status=BirthRegistrationStatus.SUBMITTED
         )
         db.add(registration)
         db.flush()  
@@ -113,7 +113,32 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/all")
+def get_all_birth_registrations(db=Depends(get_db)):
+    try:
+        registrations = (
+            db.query(BirthRegistrationModel).filter(BirthRegistrationModel.register_status=="SUBMITTED")
+            .all()
+        )
 
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "message": "Birth registrations fetched successfully",
+                "total": len(registrations),
+                "data": [
+                    BirthRegistrationResponseAll.model_validate(
+                        registration
+                    ).model_dump(mode="json")
+                    for registration in registrations
+                ]
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/")
 def get_all_registrations(
@@ -430,3 +455,4 @@ def approve_registration(registration_id: UUID, db=Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    

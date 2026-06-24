@@ -23,4 +23,6 @@ class WardModel(Base):
 
     # users               = relationship("UserModel", back_populates="ward")
     birth_registrations = relationship("BirthRegistrationModel", back_populates="ward")
+    user=relationship("UserModel",back_populates="ward")
+    userVerify=relationship("UserVerifyModel",back_populates="wardVerify")
 
