@@ -15,7 +15,12 @@ class WardModel(Base):
     ward_municipality   = Column(String(100), nullable=False)
     ward_district       = Column(String(100), nullable=False)
     ward_province       = Column(String(50), nullable=False)
-   
+
+    ward_nepali_name = Column(String,default=None)
+    ward_nepali_municipality   = Column(String(100), nullable=True,default=None)
+    ward_nepali_district       = Column(String(100), nullable=True,default=None)
+    ward_nepali_province       = Column(String(50), nullable=True,default=None)
+
     ward_contact_number = Column(String(50), nullable=False)
     ward_email          = Column(String(100), unique=True)
     created_at     = Column(TIMESTAMP(timezone=True), nullable=False, server_default=func.now())
@@ -25,4 +30,5 @@ class WardModel(Base):
     birth_registrations = relationship("BirthRegistrationModel", back_populates="ward")
     user=relationship("UserModel",back_populates="ward")
     userVerify=relationship("UserVerifyModel",back_populates="wardVerify")
+    notice=relationship("NoticeModel", back_populates="ward")
 

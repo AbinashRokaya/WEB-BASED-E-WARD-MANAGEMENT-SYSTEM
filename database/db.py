@@ -1,24 +1,24 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-import os
 from dotenv import load_dotenv
+import os
 
 load_dotenv()
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://eward_user:user123@localhost:5432/e_ward"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
 
 Base = declarative_base()
 
-db_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine
+)
 
 def get_db():
-    db = db_session()
+    db = SessionLocal()
     try:
         yield db
     finally:

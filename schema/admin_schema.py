@@ -1,6 +1,7 @@
 from pydantic import BaseModel,field_validator,EmailStr,ConfigDict
 from typing import Optional
 from typing import Optional
+from schema.birth_registration_schema import NEPALI_REGEX
 from schema.user_schema import RoleSchema
 from uuid import UUID
 from typing import List
@@ -16,6 +17,30 @@ class CreateWordRequest(BaseModel):
     ward_province:str 
     ward_contact_number:str 
     ward_email:EmailStr
+    ward_nepali_name:str
+    ward_nepali_municipality:str
+    ward_nepali_district:str
+    ward_nepali_province:str
+   
+
+    @field_validator(
+        "ward_nepali_name",
+        "ward_nepali_municipality",
+        "ward_nepali_district",
+        "ward_nepali_province",
+        mode="before"
+    )
+    @classmethod
+    def validate_nepali_name(cls, value):
+        if value is None:
+            return value
+
+        value = value.strip()
+
+        if not NEPALI_REGEX.fullmatch(value):
+            raise ValueError("Name must contain only Nepali (Devanagari) characters.")
+
+        return value
 
     @field_validator("ward_province")
     def validate_province(cls, value):
@@ -56,6 +81,7 @@ class AssignOfficerRequest(BaseModel):
     user_municipality: str
     user_ward_number: int
     user_role: RoleSchema
+    password:str
 
 # class OfficerResponse(BaseModel):
 #     user_id: int
@@ -81,11 +107,10 @@ class OfficerResponse(BaseModel):
     user_name: str
     user_phone_number: str
     user_citizenship_number: str
-    user_provience: str
+    user_province: str
     user_district: str
     user_municipality: str
     user_ward_number: int
     user_role: RoleSchema
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

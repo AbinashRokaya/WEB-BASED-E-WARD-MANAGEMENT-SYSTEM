@@ -86,7 +86,7 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
         
         address = AddressModel(
     registration_id=registration.registration_id,
-    child_province=request.address.child_provience,
+    child_province=request.address.child_province,
     child_district=request.address.child_district,
     child_municipality=request.address.child_municipality,
     child_ward_number=request.address.child_ward_number,
@@ -114,12 +114,14 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/all")
-def get_all_birth_registrations(db=Depends(get_db)):
+def get_all_birth_registrations(db=Depends(get_db), current_user=Depends(require_permission("read_user"))):
     try:
+        print(f"Current user: {current_user.user_id}, Role: {current_user.user_role}")
         registrations = (
-            db.query(BirthRegistrationModel).filter(BirthRegistrationModel.register_status=="SUBMITTED")
+            db.query(BirthRegistrationModel).filter(BirthRegistrationModel.register_status == "SUBMITTED",BirthRegistrationModel.register_ward_id== current_user.user_ward_id)
             .all()
         )
+        print(f"Fetched {len(registrations)} registrations for user {current_user.user_id}")
 
         return JSONResponse(
             status_code=200,
