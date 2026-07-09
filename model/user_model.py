@@ -15,6 +15,7 @@ class UserModel(Base):
     user_district = Column(String)
     user_municipality = Column(String)
     user_ward_number = Column(Integer)
+    password = Column(String(255),nullable=False)
     user_role = Column(Enum(RoleSchema), default=RoleSchema.Citizen)
     ward_id = Column(
         UUID(as_uuid=True),
@@ -80,6 +81,7 @@ class UserVerifyModel(Base):
     user_district = Column(String)
     user_municipality = Column(String)
     user_ward_number = Column(Integer)
+    password = Column(String(255),nullable=False)
     user_role = Column(Enum(RoleSchema), default=RoleSchema.Citizen)
     ward_id = Column(
         UUID(as_uuid=True),

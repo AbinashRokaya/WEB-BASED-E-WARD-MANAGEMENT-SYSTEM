@@ -6,7 +6,7 @@ from schema.admin_schema import CreateWordRequest, CreateWordResponse,UpdateWard
 from model.user_model import UserModel
 from schema.user_schema import RoleSchema
 from typing import List
-
+from auth.hash_password import hash_password_user,verify_password
 
 router = APIRouter(
     prefix="/v1/admin",
@@ -255,6 +255,24 @@ def assign_officer(request: AssignOfficerRequest, db=Depends(get_db)):
                 status_code=400,
                 detail=f"A {request.user_role.value} is already assigned to ward {request.user_ward_number}"
             )
+        
+        ward = (
+            db.query(WardModel)
+            .filter(
+                WardModel.ward_province == request.user_province,
+                WardModel.ward_district == request.user_district,
+                WardModel.ward_municipality == request.user_municipality,
+                WardModel.ward_no == request.user_ward_number,
+            )
+            .first()
+        )
+
+        if ward is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Ward does not exist. Please select a valid address."
+            )
+        hased_password = hash_password_user(request.password)
 
         new_officer = UserModel(
             user_name=request.user_name,
@@ -264,24 +282,26 @@ def assign_officer(request: AssignOfficerRequest, db=Depends(get_db)):
             user_district=request.user_district,
             user_municipality=request.user_municipality,
             user_ward_number=request.user_ward_number,
-            user_role=request.user_role
+            user_role=request.user_role,
+            password=hased_password,
+            ward_id=ward.ward_id
         )
 
         db.add(new_officer)
         db.commit()
         db.refresh(new_officer)
 
-        response=OfficerResponse(
-            user_id=new_officer.user_id,
-            user_name= new_officer.user_name,
-    user_phone_number= new_officer.user_phone_number,
-    user_citizenship_number= new_officer.user_citizenship_number,
-    user_province= new_officer.user_provience,
-    user_district= new_officer.user_district,
-    user_municipality= new_officer.user_municipality,
-    user_ward_number= new_officer.user_ward_number,
-    user_role= new_officer.user_role
-        )
+        response = OfficerResponse(
+    user_id=new_officer.user_id,
+    user_name=new_officer.user_name,
+    user_phone_number=new_officer.user_phone_number,
+    user_citizenship_number=new_officer.user_citizenship_number,
+    user_province=new_officer.user_provience,
+    user_district=new_officer.user_district,
+    user_municipality=new_officer.user_municipality,
+    user_ward_number=new_officer.user_ward_number,
+    user_role=new_officer.user_role
+)
 
         return JSONResponse(
             status_code=201,

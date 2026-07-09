@@ -1,16 +1,19 @@
-try:
-    
-    from pydantic import BaseModel, field_validator,ConfigDict
-except Exception:
-   
-    from pydantic import BaseModel
-    from pydantic import validator as field_validator,ConfigDict
 import re
 from enum import Enum
-from typing import List,Literal
+from typing import List, Literal, Optional
 from uuid import UUID
 
-provience_list=["Koshi","Madhesh","Bagmati","Gandaki","Lumbini","Karnali","Sudurpashchim"]
+# Robust Pydantic v1 and v2 cross-compatibility setup
+try:
+    # Pydantic v2
+    from pydantic import BaseModel, field_validator, ConfigDict
+    HAS_V2 = True
+except ImportError:
+    # Pydantic v1 fallback
+    from pydantic import BaseModel, validator as field_validator
+    HAS_V2 = False
+
+provience_list = ["Koshi", "Madhesh", "Bagmati", "Gandaki", "Lumbini", "Karnali", "Sudurpashchim"]
 class RegistrationStatus(str,Enum):
     Pending="pending"
     Approved="approved"
@@ -23,6 +26,7 @@ class UserRegisterationRequest(BaseModel):
     user_district: str
     user_municipality: str
     user_ward_number: int
+    password: str
 
     @field_validator("user_phone_number")
     def validate_phone_number(cls, value):
@@ -104,6 +108,17 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
+class LoginRequest(BaseModel):
+    user_phone_number: str
+    password: str
+
+    @field_validator("user_phone_number")
+    def validate_phone_number(cls, value):
+        if not re.fullmatch(r'^(98|97)\d{8}$', value):
+                raise ValueError(
+                    "Phone number must be a valid Nepali mobile number"
+                )
+        return value
 class TokenData(BaseModel):
     user_id: int
     user_name: str 
@@ -142,6 +157,7 @@ class CitizenVerifyRequest(BaseModel):
      user_id:int
      user_phone_number:str
      user_status:RegistrationStatus
+     
 
 
 class UserResponse(BaseModel):

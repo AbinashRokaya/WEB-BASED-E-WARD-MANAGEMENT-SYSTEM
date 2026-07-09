@@ -12,3 +12,4 @@ class WardResponse(BaseModel):
     ward_municipality: str
     ward_district: str
     ward_province: str
+   

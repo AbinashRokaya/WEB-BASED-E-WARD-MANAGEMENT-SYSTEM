@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from database.db import get_db
 from schema.user_schema import (UserRegisterationRequest, UserRegisterationResponse,OtpCodeRequest,OtpCodeResponse,
                                 OtpVerificationRequest,Token,TokenData,TokenDataResponse,CitizenVerifyRequest,
-                                UserRegisterationVerificationResponse,UserResponse,ListUserResponse)
+                                UserRegisterationVerificationResponse,UserResponse,ListUserResponse,LoginRequest)
 from model.user_model import UserModel, OtpCode, UserVerifyModel
 from datetime import datetime
 from datetime import timedelta
@@ -15,6 +15,7 @@ from twilio.rest import Client
 from model.ward_model import WardModel
 from auth.jwt import create_access_token, verify_token  
 from twilio.base.exceptions import TwilioRestException
+from auth.hash_password import hash_password_user,verify_password
 load_dotenv()
 from dotenv import load_dotenv
 
@@ -47,7 +48,7 @@ router = APIRouter(
 @router.post("/")
 def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
     try:
-        new_ward=db.query(WardModel).filter((UserModel.user_provience==request.user_provience)|(UserModel.user_district==request.user_district)|(UserModel.user_municipality==request.user_municipality)|(UserModel.user_ward_number==request.user_ward_number)).first()
+        new_ward=db.query(WardModel).filter((WardModel.ward_province==request.user_provience)|(WardModel.ward_district==request.user_district)|(WardModel.ward_municipality==request.user_municipality)|(WardModel.ward_no==request.user_ward_number)).first()
         if not new_ward:
             raise HTTPException(status_code=400, detail="There is no ward")
 
@@ -84,6 +85,7 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
                 status_code=400,
                 detail="Ward does not exist. Please select a valid address."
             )
+        hased_password = hash_password_user(request.password)
 
         new_user = UserVerifyModel(
             user_name=request.user_name,
@@ -93,7 +95,8 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
             user_district=request.user_district,
             user_municipality=request.user_municipality,
             user_ward_number=request.user_ward_number,
-            ward_id=ward.ward_id
+            ward_id=ward.ward_id,
+            password=hased_password
         )
 
         db.add(new_user)
@@ -163,6 +166,62 @@ def get_all_users(db=Depends(get_db)):
         }
     )
 
+@router.post("/login")
+def login_user(request: LoginRequest, db: get_db = Depends()):
+    try:
+        user = db.query(UserModel).filter(UserModel.user_phone_number == request.user_phone_number).first()
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid phone number or password")
+
+        if not verify_password(request.password,user.password):
+            raise HTTPException(status_code=400,detail="password is incorrect")
+
+        user_data=TokenData(
+            user_id=user.user_id,
+            user_name=user.user_name,
+            user_phone_number=user.user_phone_number,
+            user_citizenship_number=user.user_citizenship_number,
+            user_provience=user.user_provience,
+            user_district=user.user_district,
+            user_municipality=user.user_municipality,
+            user_ward_number=user.user_ward_number,
+            user_role=user.user_role,
+            user_ward_id=user.ward_id
+        )
+        access_token = create_access_token(
+    data=user_data.model_dump(mode="json")
+)
+
+        token_response = TokenDataResponse(
+    user_details=user_data,
+    access_token=access_token,
+)
+
+        json_response = JSONResponse(
+    status_code=200,
+    content={
+        "success": True,
+        "status_code": 200,
+        "message": "login successfully",
+        "data": token_response.model_dump(mode="json")
+    }
+)
+        json_response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            max_age=3600,
+            samesite="lax",
+            secure=False,
+            path="/",
+        )
+
+        return json_response
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{e}")
 @router.post("/otp")
 def generate_otp(request: OtpCodeRequest, db: get_db = Depends()):
     try:
@@ -312,7 +371,10 @@ def verify_user_by_ward_computer(request:CitizenVerifyRequest, db: get_db = Depe
                 user_provience=user.user_provience,
                 user_district=user.user_district,
                 user_municipality=user.user_municipality,
-                user_ward_number=user.user_ward_number
+                user_ward_number=user.user_ward_number,
+                password=user.password,
+                user_role=user.user_role,
+                ward_id=user.ward_id
             )
             db.add(new_user)
             db.commit()
