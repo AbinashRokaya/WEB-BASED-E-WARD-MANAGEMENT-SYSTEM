@@ -66,7 +66,7 @@ def approve_registration(registration_id: UUID, db=Depends(get_db)):
         if registration.register_status != BirthRegistrationStatus.APPROVED:
             raise HTTPException(
                 status_code=400,
-                detail="Only SUBMITTED registrations can be approved"
+                detail=f"Only APPROVED registrations can be verified (current status: {registration.register_status.value})"
             )
 
         registration.register_status = BirthRegistrationStatus.VERIFIED

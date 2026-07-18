@@ -57,3 +57,28 @@ def get_all_birth_registrations(db=Depends(get_db), current_user=Depends(require
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/birth/{registration_id}")
+def get_registration(registration_id: UUID, db=Depends(get_db)):
+    try:
+        registration = db.query(BirthRegistrationModel).filter(
+            BirthRegistrationModel.registration_id == registration_id
+        ).first()
+
+        if not registration:
+            raise HTTPException(status_code=404, detail="Registration not found")
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "message": "Registration fetched successfully",
+                "data": serialize(registration, BirthRegistrationResponse)
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -3,6 +3,7 @@ from typing import Optional
 from typing import Optional
 from schema.birth_registration_schema import NEPALI_REGEX
 from schema.user_schema import RoleSchema
+from schema.ward_schema import MunicipalityType
 from uuid import UUID
 from typing import List
 provience_list=["Koshi","Madhesh","Bagmati","Gandaki","Lumbini","Karnali","Sudurpashchim"]
@@ -12,6 +13,7 @@ class CreateWordRequest(BaseModel):
    
     ward_name:str
     ward_no:int 
+    ward_type:MunicipalityType
     ward_municipality:str 
     ward_district:str 
     ward_province:str 
@@ -51,20 +53,33 @@ class CreateWordRequest(BaseModel):
 
 
 class CreateWordResponse(BaseModel):
-    ward_id:UUID
-    ward_name:str
-    ward_no:int 
-    ward_municipality:str 
-    ward_district:str 
-    ward_province:str 
-    ward_contact_number:str 
-    ward_email:EmailStr
+    ward_id: UUID
+    ward_name: str
+    ward_no: int
+    ward_type: MunicipalityType
+    ward_municipality: str
+    ward_district: str
+    ward_province: str
+    ward_contact_number: str
+    ward_email: EmailStr
+
+    ward_nepali_name: Optional[str] = None
+    ward_nepali_municipality: Optional[str] = None
+    ward_nepali_district: Optional[str] = None
+    ward_nepali_province: Optional[str] = None
+
+    ward_logo_path: Optional[str] = None
+    chairperson_signature_path: Optional[str] = None
+    chairperson_stamp_path: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class GetAllWardResponse(BaseModel):
     ward_list:List[CreateWordResponse]
 class UpdateWardRequest(BaseModel):
     ward_no: Optional[int] = None
     ward_name: Optional[str] = None
+    ward_type: Optional[MunicipalityType] = None
     ward_municipality: Optional[str] = None
     ward_district: Optional[str] = None
     ward_province: Optional[str] = None
@@ -82,6 +97,8 @@ class AssignOfficerRequest(BaseModel):
     user_ward_number: int
     user_role: RoleSchema
     password:str
+    user_email:str
+    user_nepali_name:str
 
 # class OfficerResponse(BaseModel):
 #     user_id: int
@@ -100,6 +117,8 @@ class UpdateOfficerRequest(BaseModel):
     user_municipality: Optional[str] = None
     user_ward_number: Optional[int] = None
     user_role: Optional[RoleSchema] = None
+    user_email:Optional[str]=None
+    user_nepali_name:Optional[str]=None
 
 
 class OfficerResponse(BaseModel):
@@ -107,10 +126,18 @@ class OfficerResponse(BaseModel):
     user_name: str
     user_phone_number: str
     user_citizenship_number: str
-    user_province: str
+    user_provience: str
     user_district: str
     user_municipality: str
     user_ward_number: int
     user_role: RoleSchema
+    # These two are nullable on UserModel (some officers were created
+    # without an email or Nepali name), so they must be Optional here too —
+    # otherwise Pydantic rejects the row with "Input should be a valid
+    # string [type=string_type, input_value=None]" the moment ANY officer
+    # in the list has a null value, which is why the whole officer list
+    # endpoint (/v1/admin/users/officers) was failing with 500.
+    user_email: Optional[str] = None
+    user_nepali_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

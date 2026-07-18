@@ -28,46 +28,38 @@ def serialize(obj, schema):
     return schema.from_orm(obj).model_dump(mode="json")
 
 
-
 @router.post("/")
-def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_db),current_user=Depends(require_permission("read_user"))):
+def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_db), current_user=Depends(require_permission("read_user"))):
     try:
-       
         ward = db.query(WardModel).filter(
             WardModel.ward_id == request.register_ward_id
         ).first()
         if not ward:
             raise HTTPException(status_code=404, detail="Ward not found")
 
-      
         user = db.query(UserModel).filter(
             UserModel.user_id == current_user.user_id
         ).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        
-        parent_types = [p.parent_type for p in request.parents]
         if len(request.parents) < 1:
             raise HTTPException(status_code=400, detail="At least one parent is required")
 
-       
         registration = BirthRegistrationModel(
             register_ward_id=request.register_ward_id,
-            register_submitted_by=request.register_submitted_by,
+            register_submitted_by=current_user.user_id,
             register_status=BirthRegistrationStatus.SUBMITTED
         )
         db.add(registration)
-        db.flush()  
+        db.flush()
 
-        
         child = ChildModel(
             registration_id=registration.registration_id,
             **request.child.model_dump()
         )
         db.add(child)
 
-       
         for parent_data in request.parents:
             parent = ParentModel(
                 registration_id=registration.registration_id,
@@ -75,7 +67,6 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
             )
             db.add(parent)
 
-        
         for nominee_data in request.nominees:
             nominee = NomineeModel(
                 nominee_registration_id=registration.registration_id,
@@ -83,15 +74,25 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
             )
             db.add(nominee)
 
-        
+        # Nepali province/district/municipality (and now ward_type — the
+        # महानगरपालिका/उपमहानगरपालिका/नगरपालिका/गाउँपालिका classification)
+        # are authoritative on the ward record — pull them from there rather
+        # than trusting client input, so they can never drift out of sync
+        # with the official ward name. Nepali tole has no ward-level
+        # source, so that one does come from the request (typed by the citizen).
         address = AddressModel(
-    registration_id=registration.registration_id,
-    child_province=request.address.child_province,
-    child_district=request.address.child_district,
-    child_municipality=request.address.child_municipality,
-    child_ward_number=request.address.child_ward_number,
-    child_tole=request.address.child_tole,
-)
+            registration_id=registration.registration_id,
+            child_province=request.address.child_province,
+            child_district=request.address.child_district,
+            child_municipality=request.address.child_municipality,
+            child_ward_number=request.address.child_ward_number,
+            child_tole=request.address.child_tole,
+            ward_nepali_province=ward.ward_nepali_province,
+            ward_nepali_district=ward.ward_nepali_district,
+            ward_nepali_municipality=ward.ward_nepali_municipality,
+            ward_nepali_name=request.address.ward_nepali_name,
+            ward_type=ward.ward_type,
+        )
         db.add(address)
 
         db.commit()
@@ -112,7 +113,6 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
 @router.get("/all")
 def get_all_birth_registrations(db=Depends(get_db), current_user=Depends(require_permission("read_user"))):
     try:
@@ -458,3 +458,30 @@ def approve_registration(registration_id: UUID, db=Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     
+
+@router.get("/all")
+def get_all_ward_chairperson_registrations(
+    db=Depends(get_db),
+    current_user=Depends(require_permission("read_user"))
+):
+    try:
+        registrations = (
+            db.query(BirthRegistrationModel)
+            .filter(BirthRegistrationModel.register_ward_id == current_user.user_ward_id)
+            .all()
+        )
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "message": "Registrations fetched successfully",
+                "total": len(registrations),
+                "data": [
+                    BirthRegistrationResponseAll.model_validate(r).model_dump(mode="json")
+                    for r in registrations
+                ],
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

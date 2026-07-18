@@ -16,7 +16,9 @@ class UserModel(Base):
     user_municipality = Column(String)
     user_ward_number = Column(Integer)
     password = Column(String(255),nullable=False)
+    user_email = Column(String(150), unique=True, nullable=True)
     user_role = Column(Enum(RoleSchema), default=RoleSchema.Citizen)
+    user_nepali_name = Column(String(150), nullable=True)
     ward_id = Column(
         UUID(as_uuid=True),
         ForeignKey("ward.ward_id"),
@@ -34,6 +36,9 @@ class UserModel(Base):
         onupdate=func.now()
     )
     birth_registrations = relationship("BirthRegistrationModel", back_populates="submitted_by_user")
+    death_registrations = relationship("DeathRegistrationModel", back_populates="submitted_by_user")
+    migration_registrations=relationship("MigrationRegistrationModel",back_populates="submitted_by_user")
+
     ward=relationship("WardModel",back_populates="user")
 
 
@@ -83,11 +88,15 @@ class UserVerifyModel(Base):
     user_ward_number = Column(Integer)
     password = Column(String(255),nullable=False)
     user_role = Column(Enum(RoleSchema), default=RoleSchema.Citizen)
+    user_email = Column(String(150), unique=True, nullable=True)
     ward_id = Column(
         UUID(as_uuid=True),
         ForeignKey("ward.ward_id"),
         nullable=True
     )
+    user_nepali_name = Column(String(150), nullable=True)
+    user_nepali_name = Column(String(150), nullable=True)
+    
 
     user_status = Column(Enum(RegistrationStatus), default=RegistrationStatus.Pending)
 

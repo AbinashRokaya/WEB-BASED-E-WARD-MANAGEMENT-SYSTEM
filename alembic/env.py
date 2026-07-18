@@ -11,6 +11,8 @@ from model.user_model import *
 from model.ward_model import *
 from model.notice_model import *
 from model.birth_registration_model import *
+from model.death_registration_route import *
+from model.migration_registration_model import *
 
 config = context.config
 

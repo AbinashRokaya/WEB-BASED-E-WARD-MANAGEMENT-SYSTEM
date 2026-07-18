@@ -1,76 +1,219 @@
-from fastapi import HTTPException, APIRouter, Depends
+from fastapi import HTTPException, APIRouter, Depends, UploadFile, File, Form
 from fastapi.responses import JSONResponse
+from typing import Optional
 from database.db import get_db
 from model.ward_model import WardModel
-from schema.admin_schema import CreateWordRequest, CreateWordResponse,UpdateWardRequest,AssignOfficerRequest, UpdateOfficerRequest, OfficerResponse,GetAllWardResponse
+from schema.ward_schema import MunicipalityType
+from schema.admin_schema import CreateWordResponse, AssignOfficerRequest, UpdateOfficerRequest, OfficerResponse, GetAllWardResponse
 from model.user_model import UserModel
 from schema.user_schema import RoleSchema
-from typing import List
-from auth.hash_password import hash_password_user,verify_password
+from auth.hash_password import hash_password_user, verify_password
+import os
+import shutil
+import uuid as uuid_lib
 
-router = APIRouter(
-    prefix="/v1/admin",
-    tags=["admin"]
-)
+router = APIRouter(prefix="/v1/admin", tags=["admin"])
+
+ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
+UPLOAD_DIR = "static/wards"
 
 
+def save_ward_image(ward_id, file: UploadFile, suffix: str) -> str:
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail="Only PNG/JPEG/WEBP images allowed")
+
+    ext = os.path.splitext(file.filename)[1] or ".png"
+    ward_dir = os.path.join(UPLOAD_DIR, str(ward_id))
+    os.makedirs(ward_dir, exist_ok=True)
+
+    filename = f"{suffix}_{uuid_lib.uuid4().hex[:8]}{ext}"
+    filepath = os.path.join(ward_dir, filename)
+
+    with open(filepath, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    return f"wards/{ward_id}/{filename}"
 @router.post("/ward")
-def create_ward(request: CreateWordRequest, db=Depends(get_db)):
+def create_ward(
+    ward_name: str = Form(...),
+    ward_no: int = Form(...),
+    ward_type: MunicipalityType = Form(...),
+    ward_municipality: str = Form(...),
+    ward_district: str = Form(...),
+    ward_province: str = Form(...),
+    ward_contact_number: str = Form(...),
+    ward_email: str = Form(...),
+    ward_nepali_name: Optional[str] = Form(None),
+    ward_nepali_municipality: Optional[str] = Form(None),
+    ward_nepali_district: Optional[str] = Form(None),
+    ward_nepali_province: Optional[str] = Form(None),
+    logo: UploadFile = File(None),
+    chairperson_signature: UploadFile = File(None),
+    chairperson_stamp: UploadFile = File(None),
+    db=Depends(get_db),
+):
     try:
-        
         existing_ward = db.query(WardModel).filter(
-            WardModel.ward_province == request.ward_province,
-            WardModel.ward_district == request.ward_district,
-            WardModel.ward_municipality == request.ward_municipality,
-            WardModel.ward_name == request.ward_name
+            WardModel.ward_province == ward_province,
+            WardModel.ward_district == ward_district,
+            WardModel.ward_municipality == ward_municipality,
+            WardModel.ward_name == ward_name,
         ).first()
 
-       
         if existing_ward:
-            raise HTTPException(
-                status_code=400,
-                detail="Ward already exists in this municipality"
-            )
+            raise HTTPException(status_code=400, detail="Ward already exists in this municipality")
 
         new_ward = WardModel(
-            ward_no=request.ward_no,
-            ward_municipality=request.ward_municipality,  
-            ward_district=request.ward_district,
-            ward_province=request.ward_province,        
-            ward_contact_number=request.ward_contact_number,
-            ward_email=request.ward_email,
-            ward_name=request.ward_name
+            ward_no=ward_no,
+            ward_type=ward_type,
+            ward_municipality=ward_municipality,
+            ward_district=ward_district,
+            ward_province=ward_province,
+            ward_contact_number=ward_contact_number,
+            ward_email=ward_email,
+            ward_name=ward_name,
+            ward_nepali_name=ward_nepali_name,
+            ward_nepali_municipality=ward_nepali_municipality,
+            ward_nepali_district=ward_nepali_district,
+            ward_nepali_province=ward_nepali_province,
         )
 
-        db.add(new_ward)     
+        db.add(new_ward)
+        db.flush()  # assigns ward_id before commit so images can use it as the folder name
+
+        if logo:
+            new_ward.ward_logo_path = save_ward_image(new_ward.ward_id, logo, "logo")
+        if chairperson_signature:
+            new_ward.chairperson_signature_path = save_ward_image(new_ward.ward_id, chairperson_signature, "signature")
+        if chairperson_stamp:
+            new_ward.chairperson_stamp_path = save_ward_image(new_ward.ward_id, chairperson_stamp, "stamp")
+
         db.commit()
         db.refresh(new_ward)
 
-        new_ward_response = CreateWordResponse(
+        response = CreateWordResponse(
             ward_id=new_ward.ward_id,
             ward_no=new_ward.ward_no,
+            ward_type=new_ward.ward_type,
             ward_name=new_ward.ward_name,
-            ward_municipality=new_ward.ward_municipality,  
+            ward_municipality=new_ward.ward_municipality,
             ward_district=new_ward.ward_district,
             ward_province=new_ward.ward_province,
             ward_contact_number=new_ward.ward_contact_number,
-            ward_email=new_ward.ward_email
+            ward_email=new_ward.ward_email,
+            ward_nepali_name=new_ward.ward_nepali_name,
+            ward_nepali_municipality=new_ward.ward_nepali_municipality,
+            ward_nepali_district=new_ward.ward_nepali_district,
+            ward_nepali_province=new_ward.ward_nepali_province,
+            ward_logo_path=new_ward.ward_logo_path,
+            chairperson_signature_path=new_ward.chairperson_signature_path,
+            chairperson_stamp_path=new_ward.chairperson_stamp_path,
         )
 
         return JSONResponse(
             status_code=201,
-            content={
-                "success": True,
-                "status_code": 201,
-                "message": "New ward is created",
-                "data": new_ward_response.model_dump()
-            }
+            content={"success": True, "status_code": 201, "message": "New ward is created", "data": response.model_dump(mode="json")},
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/ward/{ward_id}")
+def update_ward(
+    ward_id: str,
+    ward_name: Optional[str] = Form(None),
+    ward_no: Optional[int] = Form(None),
+    ward_type: Optional[MunicipalityType] = Form(None),
+    ward_municipality: Optional[str] = Form(None),
+    ward_district: Optional[str] = Form(None),
+    ward_province: Optional[str] = Form(None),
+    ward_contact_number: Optional[str] = Form(None),
+    ward_email: Optional[str] = Form(None),
+    ward_nepali_name: Optional[str] = Form(None),
+    ward_nepali_municipality: Optional[str] = Form(None),
+    ward_nepali_district: Optional[str] = Form(None),
+    ward_nepali_province: Optional[str] = Form(None),
+    logo: UploadFile = File(None),
+    chairperson_signature: UploadFile = File(None),
+    chairperson_stamp: UploadFile = File(None),
+    db=Depends(get_db),
+):
+    try:
+        ward = db.query(WardModel).filter(WardModel.ward_id == ward_id).first()
+        if not ward:
+            raise HTTPException(status_code=404, detail="Ward not found")
+
+        incoming = {
+            "ward_name": ward_name,
+            "ward_no": ward_no,
+            "ward_type": ward_type,
+            "ward_municipality": ward_municipality,
+            "ward_district": ward_district,
+            "ward_province": ward_province,
+            "ward_contact_number": ward_contact_number,
+            "ward_email": ward_email,
+            "ward_nepali_name": ward_nepali_name,
+            "ward_nepali_municipality": ward_nepali_municipality,
+            "ward_nepali_district": ward_nepali_district,
+            "ward_nepali_province": ward_nepali_province,
+        }
+        update_data = {k: v for k, v in incoming.items() if v is not None}
+
+        duplicate = db.query(WardModel).filter(
+            WardModel.ward_province == update_data.get("ward_province", ward.ward_province),
+            WardModel.ward_district == update_data.get("ward_district", ward.ward_district),
+            WardModel.ward_municipality == update_data.get("ward_municipality", ward.ward_municipality),
+            WardModel.ward_name == update_data.get("ward_name", ward.ward_name),
+            WardModel.ward_id != ward_id,
+        ).first()
+
+        if duplicate:
+            raise HTTPException(status_code=400, detail="A ward with the same name already exists in this municipality")
+
+        for field, value in update_data.items():
+            setattr(ward, field, value)
+
+        if logo:
+            ward.ward_logo_path = save_ward_image(ward.ward_id, logo, "logo")
+        if chairperson_signature:
+            ward.chairperson_signature_path = save_ward_image(ward.ward_id, chairperson_signature, "signature")
+        if chairperson_stamp:
+            ward.chairperson_stamp_path = save_ward_image(ward.ward_id, chairperson_stamp, "stamp")
+
+        db.commit()
+        db.refresh(ward)
+
+        response = CreateWordResponse(
+            ward_id=ward.ward_id,
+            ward_no=ward.ward_no,
+            ward_type=ward.ward_type,
+            ward_name=ward.ward_name,
+            ward_municipality=ward.ward_municipality,
+            ward_district=ward.ward_district,
+            ward_province=ward.ward_province,
+            ward_contact_number=ward.ward_contact_number,
+            ward_email=ward.ward_email,
+            ward_nepali_name=ward.ward_nepali_name,
+            ward_nepali_municipality=ward.ward_nepali_municipality,
+            ward_nepali_district=ward.ward_nepali_district,
+            ward_nepali_province=ward.ward_nepali_province,
+            ward_logo_path=ward.ward_logo_path,
+            chairperson_signature_path=ward.chairperson_signature_path,
+            chairperson_stamp_path=ward.chairperson_stamp_path,
+        )
+        return JSONResponse(
+            status_code=200,
+            content={"success": True, "status_code": 200, "message": "Ward updated successfully", "data": response.model_dump(mode="json")},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/ward")
@@ -80,16 +223,27 @@ def get_all_ward(db=Depends(get_db)):
         if not ward:
             raise HTTPException(status_code=404, detail="Ward not found")
         
-        ward_list=[CreateWordResponse(
-             ward_id=w.ward_id,
-            ward_no=w.ward_no,
-            ward_name=w.ward_name,
-            ward_municipality=w.ward_municipality,  
-            ward_district=w.ward_district,
-            ward_province=w.ward_province,
-            ward_contact_number=w.ward_contact_number,
-            ward_email=w.ward_email
-        )for w in ward]
+        ward_list = [
+    CreateWordResponse(
+        ward_id=w.ward_id,
+        ward_no=w.ward_no,
+        ward_type=w.ward_type,
+        ward_name=w.ward_name,
+        ward_municipality=w.ward_municipality,
+        ward_district=w.ward_district,
+        ward_province=w.ward_province,
+        ward_contact_number=w.ward_contact_number,
+        ward_email=w.ward_email,
+        ward_nepali_name=w.ward_nepali_name,
+        ward_nepali_municipality=w.ward_nepali_municipality,
+        ward_nepali_district=w.ward_nepali_district,
+        ward_nepali_province=w.ward_nepali_province,
+        ward_logo_path=w.ward_logo_path,
+        chairperson_signature_path=w.chairperson_signature_path,
+        chairperson_stamp_path=w.chairperson_stamp_path,
+    )
+    for w in ward
+]
         response_data= GetAllWardResponse(ward_list=ward_list)
 
         return JSONResponse(
@@ -107,63 +261,6 @@ def get_all_ward(db=Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
-@router.put("/ward/{ward_id}")
-def update_ward(ward_id: str, request: UpdateWardRequest, db=Depends(get_db)):
-    try:
-        ward = db.query(WardModel).filter(WardModel.ward_id == ward_id).first()
-        if not ward:
-            raise HTTPException(status_code=404, detail="Ward not found")
-
-        duplicate = db.query(WardModel).filter(
-            WardModel.ward_province == (request.ward_province or ward.ward_province),
-            WardModel.ward_district == (request.ward_district or ward.ward_district),
-            WardModel.ward_municipality == (request.ward_municipality or ward.ward_municipality),
-            WardModel.ward_name == (request.ward_name or ward.ward_name),
-            WardModel.ward_id != ward_id
-        ).first()
-
-        if duplicate:
-            raise HTTPException(
-                status_code=400,
-                detail="A ward with the same name already exists in this municipality"
-            )
-
-       
-        update_data = request.model_dump(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(ward, field, value)
-
-        db.commit()
-        db.refresh(ward)
-
-        updated_ward_response = CreateWordResponse(
-            ward_id=ward.ward_id,
-            ward_no=ward.ward_no,
-            ward_name=ward.ward_name,
-            ward_municipality=ward.ward_municipality,
-            ward_district=ward.ward_district,
-            ward_province=ward.ward_province,
-            ward_contact_number=ward.ward_contact_number,
-            ward_email=ward.ward_email
-        )
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "status_code": 200,
-                "message": "Ward updated successfully",
-                "data": updated_ward_response.model_dump(mode="json")
-            }
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    
 
 @router.delete("/ward/{ward_id}")
 def delete_ward(ward_id: int, db=Depends(get_db)):
@@ -296,7 +393,7 @@ def assign_officer(request: AssignOfficerRequest, db=Depends(get_db)):
     user_name=new_officer.user_name,
     user_phone_number=new_officer.user_phone_number,
     user_citizenship_number=new_officer.user_citizenship_number,
-    user_province=new_officer.user_provience,
+    user_provience=new_officer.user_provience,   # ← fixed keyword
     user_district=new_officer.user_district,
     user_municipality=new_officer.user_municipality,
     user_ward_number=new_officer.user_ward_number,

@@ -16,9 +16,11 @@ from schema.birth_registration_schema import (
 
 )
 from auth.current_user import require_permission
+from services.certificate_service import issue_certificate_for_registration
+
 
 router = APIRouter(
-    prefix="/v1/ward-chaiperson",
+    prefix="/v1/ward-chairperson",
     tags=["ward-chairperson"]
 )
 
@@ -26,6 +28,40 @@ def serialize(obj, schema):
     return schema.from_orm(obj).model_dump(mode="json")
 
 
+@router.post("/{registration_id}/approve")
+def approve_registration(registration_id: UUID, db=Depends(get_db), current_user=Depends(require_permission("update_user"))):
+    try:
+        registration = db.query(BirthRegistrationModel).filter(
+            BirthRegistrationModel.registration_id == registration_id
+        ).first()
+        if not registration:
+            raise HTTPException(status_code=404, detail="Registration not found")
+
+        if registration.register_status != BirthRegistrationStatus.VERIFIED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Only VERIFIED registrations can be approved (current status: {registration.register_status.value})"
+            )
+
+        certificate = issue_certificate_for_registration(registration, db, current_user.user_id)
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "message": "Certificate issued successfully",
+                "data": {"certificate_no": certificate.certificate_no}
+            }
+        )
+
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/all")
 def get_all_birth_registrations(db=Depends(get_db)):
     try:
@@ -54,40 +90,6 @@ def get_all_birth_registrations(db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
     
 
-@router.post("/{registration_id}/approve")
-def approve_registration(registration_id: UUID, db=Depends(get_db)):
-    try:
-        registration = db.query(BirthRegistrationModel).filter(
-            BirthRegistrationModel.registration_id == registration_id
-        ).first()
-        if not registration:
-            raise HTTPException(status_code=404, detail="Registration not found")
-
-        if registration.register_status != BirthRegistrationStatus.VERIFIED:
-            raise HTTPException(
-                status_code=400,
-                detail="Only SUBMITTED registrations can be approved"
-            )
-
-        registration.register_status = BirthRegistrationStatus.CERTIFICATE_ISSUED
-        db.commit()
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "status_code": 200,
-                "message": "Registration VERIFIED successfully",
-                "data": None
-            }
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-    
 
 @router.post("/{registration_id}/reject")
 def reject_registration(

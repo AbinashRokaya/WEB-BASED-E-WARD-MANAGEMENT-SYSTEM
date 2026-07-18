@@ -1,5 +1,6 @@
 from enum import Enum
-from datetime import date
+from datetime import datetime, date
+from typing import Optional
 from pydantic import BaseModel
 from uuid import UUID
 
@@ -23,16 +24,11 @@ class NoticeStatus(str, Enum):
     ARCHIVED = "ARCHIVED"
 
 
-
-
 class NoticeCreate(BaseModel):
-   
     notice_title: str
     notice_description: str
     notice_type: NoticeType
     status: NoticeStatus = NoticeStatus.DRAFT
-    
-    
 
 
 class NoticeResponse(BaseModel):
@@ -41,8 +37,10 @@ class NoticeResponse(BaseModel):
     notice_title: str
     notice_description: str
     notice_type: NoticeType
-    status: NoticeStatus
-    created_at: date
+    notice_status: NoticeStatus
+    notice_attachment_path: Optional[str] = None
+    notice_attachment_type: Optional[str] = None
+    created_at: datetime
 
     class Config:
         from_attributes = True
