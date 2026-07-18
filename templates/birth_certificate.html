@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="ne">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      body {
+        font-family: "Noto Sans Devanagari", "Noto Sans", Arial, sans-serif;
+        font-size: 11px;
+        color: #000;
+      }
+      .page {
+        width: 100%;
+        height: 100%;
+        padding: 8mm 12mm;
+        position: relative;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4px;
+        table-layout: fixed;
+      }
+      .label {
+        border: 1px solid #000;
+        padding: 3px 8px;
+        font-weight: 600;
+        background: #fafafa;
+      }
+      .colon {
+        border: 1px solid #000;
+        border-left: none;
+        padding: 3px 4px;
+        text-align: center;
+      }
+      .value {
+        border: 1px solid #000;
+        border-left: none;
+        padding: 3px 8px;
+      }
+      .section-head {
+        border: 1px solid #000;
+        padding: 3px 8px;
+        font-weight: bold;
+        text-align: center;
+        background: #fdeee0;
+      }
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: 2px;
+      }
+      .header-logo img {
+        width: 135px;
+        height: 135px;
+        object-fit: contain;
+      }
+      .header-center {
+        text-align: center;
+        flex: 1;
+        padding: 0 10px;
+      }
+      .stamp-box {
+        padding: 4px 8px;
+        min-width: 150px;
+        min-height: 110px;
+        font-size: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+      }
+      .stamp-box img {
+        max-width: 145px;
+        max-height: 110px;
+        object-fit: contain;
+      }
+      .title {
+        text-align: center;
+        margin: 4px 0 6px;
+      }
+      .title .h1 {
+        font-weight: bold;
+        font-size: 20px;
+      }
+      .title .h2 {
+        font-weight: bold;
+        font-size: 14px;
+        margin-top: 2px;
+      }
+      .meta-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        margin-bottom: 2px;
+      }
+      .signature-row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 12px;
+        font-size: 11px;
+      }
+      /* Signature line: was capping the image at 22px tall, which is why
+         the chairperson's signature rendered as a barely-visible scribble.
+         Bumped the box up to hold a properly sized signature image, and
+         kept the dotted underline anchored to the bottom so it still reads
+         as a signature line rather than a floating image. */
+      .signature-line {
+        border-bottom: 1px dotted #000;
+        display: inline-flex;
+        align-items: flex-end;
+        min-width: 220px;
+        min-height: 80px;
+        vertical-align: middle;
+      }
+      .signature-line img {
+        max-height: 78px;
+        max-width: 210px;
+        object-fit: contain;
+      }
+      .qr-box {
+        position: absolute;
+        bottom: 8mm;
+        right: 12mm;
+        text-align: center;
+      }
+      .qr-box img {
+        width: 80px;
+        height: 80px;
+      }
+      .qr-box .cert-no {
+        font-size: 8px;
+        margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- ── HEADER ── -->
+      <div class="header">
+        <div class="header-logo">
+          <img src="{{ logo_data_uri }}" alt="Nepal Government" />
+        </div>
+        <div class="header-center">
+          <div style="font-weight: bold; font-size: 17px">नेपाल सरकार</div>
+          <div style="font-weight: 600; font-size: 13px">स्थानीय तह</div>
+          <div style="font-weight: 600; font-size: 13px">
+            स्थानीय पञ्जिकाधिकारीको कार्यालय
+          </div>
+          <div style="font-size: 11px; margin-top: 3px">
+            वडा नं. {{ ward_no_np }}, {{ ward.ward_nepali_municipality }} {{
+            ward_type_np }}
+          </div>
+          <div style="font-size: 11px">
+            {{ ward.ward_nepali_district }} जिल्ला, {{ ward.ward_nepali_province
+            }} प्रदेश
+          </div>
+          <div style="font-weight: bold; font-size: 12px; margin-top: 4px">
+            Government of Nepal
+          </div>
+          <div style="font-size: 11px">Office of the Local Registrar</div>
+          <div style="font-size: 10px; margin-top: 1px">
+            Ward No. {{ ward.ward_no }}, {{ ward.ward_municipality }} {{
+            ward_type_en }}
+          </div>
+          <div style="font-size: 10px">
+            {{ ward.ward_district }} District, {{ ward.ward_province }} Province
+          </div>
+        </div>
+        <div class="stamp-box">
+          {% if ward_logo_data_uri %}
+          <img src="{{ ward_logo_data_uri }}" alt="Ward Logo" />
+          {% else %} वडाको लोगो<br />(Ward Logo) {% endif %}
+        </div>
+      </div>
+
+      <hr style="border: none; border-top: 1.5px solid #000; margin: 4px 0" />
+
+      <!-- ── TITLE ── -->
+      <div class="title">
+        <div class="h1">जन्म दर्ता प्रमाणपत्र</div>
+        <div class="h2">(Birth Registration Certificate)</div>
+      </div>
+
+      <!-- ── REGISTRATION META ── -->
+      <div class="meta-row">
+        <div>दर्ता नम्बर (Registration No.) : {{ certificate_no }}</div>
+        <div>दर्ता मिति (Date of Registration) : {{ registration_date }}</div>
+      </div>
+      <div style="font-size: 11px; margin-bottom: 2px">
+        प्रमाणपत्र जारी मिति (Date of Issue) : {{ issue_date }}
+      </div>
+      <div style="font-size: 11px; margin-bottom: 2px">
+        राष्ट्रिय परिचय नम्बर (NIN) : {{ nin or "" }}
+      </div>
+
+      <!-- ── CHILD DETAILS ── -->
+      <table>
+        <colgroup>
+          <col style="width: 24%" />
+          <col style="width: 3%" />
+          <col style="width: 73%" />
+        </colgroup>
+        <tr>
+          <td class="label">पूरा नाम (Full Name)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ child.full_name }}</td>
+        </tr>
+        <tr>
+          <td class="label">जन्म मिति (Date of Birth)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ child.dob_bs }} (ई.सं. {{ child.dob_ad }})</td>
+        </tr>
+        <tr>
+          <td class="label">लिङ्ग (Sex)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ child.gender_label }}</td>
+        </tr>
+        <tr>
+          <td class="label">स्थायी ठेगाना (Permanent Address)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ shared_address }}</td>
+        </tr>
+        <tr>
+          <td class="label">जन्म स्थान (Birth Place)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ shared_address }}</td>
+        </tr>
+        <tr>
+          <td class="label">जन्म भएको स्थान (Location of Birth)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ child.birth_place_label }}</td>
+        </tr>
+        <tr>
+          <td class="label">जन्मको किसिम (Type of Birth)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ child.birth_kind_label }}</td>
+        </tr>
+      </table>
+
+      <!-- ── FATHER / MOTHER DETAILS ── -->
+      <table>
+        <colgroup>
+          <col style="width: 15%" />
+          <col style="width: 2%" />
+          <col style="width: 33%" />
+          <col style="width: 15%" />
+          <col style="width: 2%" />
+          <col style="width: 33%" />
+        </colgroup>
+        <tr>
+          <td class="section-head" colspan="3">
+            बाबुको विवरण (Father's Details)
+          </td>
+          <td class="section-head" colspan="3">
+            आमाको विवरण (Mother's Details)
+          </td>
+        </tr>
+        <tr>
+          <td class="label">पूरा नाम</td>
+          <td class="colon">:</td>
+          <td class="value">{{ father.full_name if father else "" }}</td>
+          <td class="label">पूरा नाम</td>
+          <td class="colon">:</td>
+          <td class="value">{{ mother.full_name if mother else "" }}</td>
+        </tr>
+        <tr>
+          <td class="label">नागरिकता नं./NIN</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ father.parent_citizenship_no if father else "" }}
+          </td>
+          <td class="label">नागरिकता नं./NIN</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ mother.parent_citizenship_no if mother else "" }}
+          </td>
+        </tr>
+        <tr>
+          <td class="label">स्थायी ठेगाना</td>
+          <td class="colon">:</td>
+          <td class="value">{{ shared_address }}</td>
+          <td class="label">स्थायी ठेगाना</td>
+          <td class="colon">:</td>
+          <td class="value">{{ shared_address }}</td>
+        </tr>
+        <tr>
+          <td class="label">पेशा (Occupation)</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ father.parent_occupation if father else "" }}
+          </td>
+          <td class="label">पेशा (Occupation)</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ mother.parent_occupation if mother else "" }}
+          </td>
+        </tr>
+        <tr>
+          <td class="label">राष्ट्रियता (Nationality)</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ father.parent_nationality if father else "" }}
+          </td>
+          <td class="label">राष्ट्रियता (Nationality)</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ mother.parent_nationality if mother else "" }}
+          </td>
+        </tr>
+      </table>
+
+      <!-- ── INFORMANT'S DETAILS ── -->
+      <table>
+        <colgroup>
+          <col style="width: 24%" />
+          <col style="width: 3%" />
+          <col style="width: 73%" />
+        </colgroup>
+        <tr>
+          <td class="section-head" colspan="3">
+            सूचनादाताको विवरण (Informant's Details)
+          </td>
+        </tr>
+        <tr>
+          <td class="label">पूरा नाम (Full Name)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ informant.full_name if informant else "" }}</td>
+        </tr>
+        <tr>
+          <td class="label">नागरिकता नं./NIN</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ informant.nominee_citizenship_no if informant else "" }}
+          </td>
+        </tr>
+        <tr>
+          <td class="label">ठेगाना (Address)</td>
+          <td class="colon">:</td>
+          <td class="value">{{ shared_address }}</td>
+        </tr>
+        <tr>
+          <td class="label">सम्पर्क नं. (Contact No.)</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ informant.nominee_contact_no if informant else "" }}
+          </td>
+        </tr>
+        <tr>
+          <td class="label">सम्बन्ध (Relation with Child)</td>
+          <td class="colon">:</td>
+          <td class="value">
+            {{ informant.nominee_relationship if informant else "" }}
+          </td>
+        </tr>
+      </table>
+
+      <!-- ── SIGNATURE ── -->
+      <div class="signature-row">
+        <div style="flex: 1">
+          <div style="margin-bottom: 8px">
+            दर्ता गर्नेको हस्ताक्षर (Signature)
+            <span class="signature-line">
+              {% if chairperson_signature_data_uri %}
+              <img src="{{ chairperson_signature_data_uri }}" alt="Signature" />
+              {% endif %}
+            </span>
+          </div>
+          <div style="margin-bottom: 8px">
+            स्थानीय पञ्जिकाधिकारीको नाम (Name of Local Registrar) :
+            <span
+              class="signature-line"
+              style="min-height: auto; align-items: baseline"
+              >{{ registrar_name or "" }}</span
+            >
+          </div>
+          <div>
+            पद (Designation) :
+            <span
+              class="signature-line"
+              style="min-height: auto; align-items: baseline"
+              >{{ registrar_designation or "" }}</span
+            >
+          </div>
+        </div>
+        <div class="stamp-box" style="margin-left: 20px; min-height: 110px">
+          {% if chairperson_stamp_data_uri %}
+          <img src="{{ chairperson_stamp_data_uri }}" alt="Official Stamp" />
+          {% else %} कार्यालयको छाप<br />(Official Stamp) {% endif %}
+        </div>
+      </div>
+
+      <div class="qr-box">
+        <img src="{{ qr_data_uri }}" alt="Verify QR" />
+        <div class="cert-no">{{ certificate_no }}</div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -27,6 +27,14 @@ class UserRegisterationRequest(BaseModel):
     user_municipality: str
     user_ward_number: int
     password: str
+    user_email:str
+    user_nepali_name:str
+
+    @field_validator("user_email")
+    def validate_email(cls, value):
+        if not re.fullmatch(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', value):
+            raise ValueError("Invalid email address")
+        return value
 
     @field_validator("user_phone_number")
     def validate_phone_number(cls, value):
@@ -68,6 +76,8 @@ class UserRegisterationResponse(BaseModel):
     user_district: str
     user_municipality: str
     user_ward_number: int
+    user_email:str
+    user_nepali_name:str
    
 
 class OtpCodeRequest(BaseModel):

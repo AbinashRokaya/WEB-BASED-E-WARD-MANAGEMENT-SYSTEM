@@ -41,10 +41,10 @@ class DocumentType(str, enum.Enum):
     RESIDENCE_PROOF    = "RESIDENCE_PROOF"
     IN_MIGRATION_CERT  = "IN_MIGRATION_CERT"
 
-class RelatioshipType(str,enum.Enum):
-    FATHER="FATHER"
-    MOTHER="MOTHER"
-    GRANDFATHER="GRANDFATHER"
-    GRANDMOTHER="GRANDMOTHER"
-    GUARDIAN="GUARDIAN"
-    OTHER="OTHER"
+class RelatioshipType(str, enum.Enum):
+    FATHER = "बुबा"
+    MOTHER = "आमा"
+    GRANDFATHER = "हजुरबुबा"
+    GRANDMOTHER = "हजुरआमा"
+    GUARDIAN = "अभिभावक"
+    OTHER = "अन्य"

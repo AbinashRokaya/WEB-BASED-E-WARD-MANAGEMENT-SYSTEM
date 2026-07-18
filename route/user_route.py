@@ -18,6 +18,7 @@ from twilio.base.exceptions import TwilioRestException
 from auth.hash_password import hash_password_user,verify_password
 load_dotenv()
 from dotenv import load_dotenv
+from services.email_service import send_certificate_ready_email, send_registration_rejected_email
 
 import os
 
@@ -55,7 +56,8 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
 
         existing_user = db.query(UserVerifyModel).filter(
             (UserVerifyModel.user_phone_number == request.user_phone_number) |
-            (UserVerifyModel.user_citizenship_number == request.user_citizenship_number)
+            (UserVerifyModel.user_citizenship_number == request.user_citizenship_number)|
+             (UserVerifyModel.user_email == request.user_email)
         ).first()
 
         if existing_user:
@@ -96,7 +98,9 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
             user_municipality=request.user_municipality,
             user_ward_number=request.user_ward_number,
             ward_id=ward.ward_id,
-            password=hased_password
+            password=hased_password,
+            user_email=request.user_email,
+            user_nepali_name=request.user_nepali_name
         )
 
         db.add(new_user)
@@ -112,7 +116,9 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
             user_district=new_user.user_district,
             user_municipality=new_user.user_municipality,
             user_ward_number=new_user.user_ward_number,
-            user_status=new_user.user_status
+            user_status=new_user.user_status,
+            user_nepali_name=new_user.user_nepali_name
+        
         )
 
         return JSONResponse(
@@ -127,6 +133,7 @@ def create_user(request: UserRegisterationRequest, db: get_db = Depends()):
     except HTTPException:
         raise
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500,detail=f"{e}")
     
 @router.get("/")
@@ -186,7 +193,8 @@ def login_user(request: LoginRequest, db: get_db = Depends()):
             user_municipality=user.user_municipality,
             user_ward_number=user.user_ward_number,
             user_role=user.user_role,
-            user_ward_id=user.ward_id
+            user_ward_id=user.ward_id,
+         user_email=user.user_email,
         )
         access_token = create_access_token(
     data=user_data.model_dump(mode="json")
@@ -348,22 +356,22 @@ def verify_otp(request: OtpVerificationRequest,response:Response, db: get_db = D
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"{e}")
     
-
 @router.post("/verif/Citizen")
-def verify_user_by_ward_computer(request:CitizenVerifyRequest, db: get_db = Depends()):
+def verify_user_by_ward_computer(request: CitizenVerifyRequest, db: get_db = Depends()):
     try:
-        user=db.query(UserVerifyModel).filter(
-            UserVerifyModel.user_id==request.user_id,
-            UserVerifyModel.user_phone_number==request.user_phone_number
+        user = db.query(UserVerifyModel).filter(
+            UserVerifyModel.user_id == request.user_id,
+            UserVerifyModel.user_phone_number == request.user_phone_number
         ).first()
 
         if not user:
             raise HTTPException(status_code=400, detail="User not found")
-        
-        user.user_status=request.user_status
+
+        user.user_status = request.user_status
         db.commit()
-        if request.user_status=="approved":
-            new_user=UserModel(
+
+        if request.user_status == "approved":
+            new_user = UserModel(
                 user_id=user.user_id,
                 user_name=user.user_name,
                 user_phone_number=user.user_phone_number,
@@ -374,36 +382,66 @@ def verify_user_by_ward_computer(request:CitizenVerifyRequest, db: get_db = Depe
                 user_ward_number=user.user_ward_number,
                 password=user.password,
                 user_role=user.user_role,
-                ward_id=user.ward_id
+                ward_id=user.ward_id,
+                user_email=user.user_email,
+                user_nepali_name=user.user_nepali_name
             )
             db.add(new_user)
             db.commit()
 
-            new_user_response= UserRegisterationResponse(
-            user_id=new_user.user_id,
-            user_name=new_user.user_name,
-            user_phone_number=new_user.user_phone_number,
-            user_citizenship_number=new_user.user_citizenship_number,
-            user_provience=new_user.user_provience,
-            user_district=new_user.user_district,
-            user_municipality=new_user.user_municipality,
-            user_ward_number=new_user.user_ward_number,
-            
-        )
-        
-        
+            new_user_response = UserRegisterationResponse(
+                user_id=new_user.user_id,
+                user_name=new_user.user_name,
+                user_phone_number=new_user.user_phone_number,
+                user_citizenship_number=new_user.user_citizenship_number,
+                user_provience=new_user.user_provience,
+                user_district=new_user.user_district,
+                user_municipality=new_user.user_municipality,
+                user_ward_number=new_user.user_ward_number,
+                user_email=new_user.user_email,
+                user_nepali_name=new_user.user_nepali_name
+            )
 
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": True,
+                    "status_code": 200,
+                    "message": f"New user is registered with status {request.user_status}",
+                    "data": new_user_response.model_dump()
+                }
+            )
+
+        elif request.user_status == "rejected":
+            if user.user_email:
+                send_registration_rejected_email(
+                    user.user_email,
+                    user.user_nepali_name or user.user_name,
+                    user.user_municipality,
+                )
+
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "success": True,
+                    "status_code": 200,
+                    "message": "User registration rejected",
+                    "data": {"user_id": user.user_id, "user_status": user.user_status}
+                }
+            )
+
+        # pending / any other status — just the status update above, no email
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
                 "status_code": 200,
-                "message": f"New user is registered with status {request.user_status}",
-                "data": new_user_response.model_dump() if request.user_status=="approved" else {"user_id":user.user_id,"user_status":user.user_status}
+                "message": f"User status updated to {request.user_status}",
+                "data": {"user_id": user.user_id, "user_status": user.user_status}
             }
         )
+
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"{e}")
-    

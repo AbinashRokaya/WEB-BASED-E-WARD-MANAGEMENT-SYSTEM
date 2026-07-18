@@ -8,6 +8,7 @@ from database.db import Base
 from model.enums import BirthRegistrationStatus
 from model.enums import GenderType, BirthKindType,ParentType,DocumentType,BirthPlaceType,RelatioshipType,BirthRegistrationStatus
 from model.ward_model import WardModel
+from schema.ward_schema import MunicipalityType
 
 class BirthRegistrationModel(Base):
     __tablename__ = "birth_registration"
@@ -34,6 +35,7 @@ class BirthRegistrationModel(Base):
     child             = relationship("ChildModel", back_populates="registration", uselist=False)
     parents           = relationship("ParentModel", back_populates="registration")
     nominees          = relationship("NomineeModel", back_populates="registration")
+    certificate = relationship("CertificateModel", back_populates="registration", uselist=False)
     reject = relationship("RejectModel",back_populates="registration")
     address = relationship(
     "AddressModel",
@@ -195,8 +197,33 @@ class AddressModel(Base):
     child_municipality = Column(String)
     child_ward_number = Column(Integer)
     child_tole=Column(String)
+    ward_nepali_name = Column(String,default=None)
+    ward_nepali_municipality   = Column(String(100), nullable=True,default=None)
+    ward_nepali_district       = Column(String(100), nullable=True,default=None)
+    ward_nepali_province       = Column(String(50), nullable=True,default=None)
+    # Local-unit type (महानगरपालिका / उपमहानगरपालिका / नगरपालिका / गाउँपालिका) —
+    # copied from the ward at registration time, same as the other
+    # ward_nepali_* fields above, so it can't drift from the official record.
+    ward_type = Column(SAEnum(MunicipalityType), nullable=True)
 
     registration = relationship(
     "BirthRegistrationModel",
     back_populates="address"
 )
+    
+class CertificateModel(Base):
+    __tablename__ = "certificate"
+
+    cert_id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    registration_id = Column(UUID(as_uuid=True), ForeignKey("birth_registration.registration_id", ondelete="CASCADE"), nullable=False, unique=True)
+    certificate_no  = Column(String(100), nullable=False, unique=True)
+    nin_no          = Column(String(10), nullable=True, unique=True)   # <-- add this
+    data_hash       = Column(String(64), nullable=False)
+    qr_path         = Column(String, nullable=True)
+    pdf_path        = Column(String, nullable=True)
+    issued_by       = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    is_valid        = Column(Boolean, nullable=False, default=True)
+    revoked_reason  = Column(Text, nullable=True)
+    created_at      = Column(DateTime, server_default=func.now())
+
+    registration = relationship("BirthRegistrationModel", back_populates="certificate")

@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel,ConfigDict,field_validator
 from typing import Optional, List
 from uuid import UUID
@@ -6,6 +5,7 @@ from model.enums import (
     BirthRegistrationStatus, GenderType, BirthKindType,
     BirthPlaceType, ParentType, RelatioshipType
 )
+from schema.ward_schema import MunicipalityType
 import re
 from datetime import date
 NEPALI_REGEX = re.compile(
@@ -270,10 +270,14 @@ class AddressRequest(BaseModel):
     child_municipality: str
     child_ward_number: int
     child_tole: Optional[str] = None
-
-class AddressResponse(AddressRequest):
-    address_id: UUID
-    model_config = ConfigDict(from_attributes=True)
+    ward_nepali_province: Optional[str] = None
+    ward_nepali_district: Optional[str] = None
+    ward_nepali_municipality: Optional[str] = None
+    ward_nepali_name: Optional[str] = None
+    # Accepted from the client but overridden server-side from the ward
+    # record in create_birth_registration — kept optional here for the
+    # same reason ward_nepali_* above are optional.
+    ward_type: Optional[MunicipalityType] = None
 
 class UpdateAddressRequest(BaseModel):
     child_province: Optional[str] = None
@@ -281,6 +285,11 @@ class UpdateAddressRequest(BaseModel):
     child_municipality: Optional[str] = None
     child_ward_number: Optional[int] = None
     child_tole: Optional[str] = None
+    ward_nepali_province: Optional[str] = None
+    ward_nepali_district: Optional[str] = None
+    ward_nepali_municipality: Optional[str] = None
+    ward_nepali_name: Optional[str] = None
+    ward_type: Optional[MunicipalityType] = None
 
 class AddressResponse(BaseModel):
     address_id: UUID
@@ -290,6 +299,11 @@ class AddressResponse(BaseModel):
     child_ward_number: int
     child_tole: str | None = None
 
+    ward_nepali_province: str | None = None
+    ward_nepali_district: str | None = None
+    ward_nepali_municipality: str | None = None
+    ward_nepali_name: str | None = None
+    ward_type: MunicipalityType | None = None
     model_config = ConfigDict(from_attributes=True)
 
 class RejectRequest(BaseModel):
@@ -311,7 +325,7 @@ class BirthRegistrationRequest(BaseModel):
     address: AddressRequest
 
 class BirthRegistrationResponse(BaseModel):
-    
+    registration_id: UUID          # ← add this
     register_ward_id: UUID
     register_submitted_by: int
     register_status: BirthRegistrationStatus
@@ -327,6 +341,7 @@ class UpdateRegistrationRequest(BaseModel):
     address: Optional[UpdateAddressRequest] = None
 
 class BirthRegistrationResponseAll(BaseModel):
+    #  registration_id: UUID
     registration_id: UUID
     register_ward_id: UUID
     register_submitted_by: int
