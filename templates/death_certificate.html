@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="ne">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      body {
+        font-family: "Noto Sans Devanagari", "Noto Sans", Arial, sans-serif;
+        font-size: 11px;
+        color: #000;
+      }
+      .page {
+        width: 100%;
+        height: 100%;
+        padding: 10mm 14mm;
+        position: relative;
+        border: 4px double #8a5a1f;
+      }
+
+      /* ── HEADER ── */
+      /* Fixed, EQUAL-width side columns so the center block is actually
+         centered on the page instead of drifting toward whichever side
+         box is narrower (logo had no fixed width before, header-right did,
+         so the center text sat off-axis). */
+      .header {
+        display: grid;
+        grid-template-columns: 220px 1fr 220px;
+        align-items: flex-start;
+      }
+      .header-logo {
+        display: flex;
+        justify-content: flex-start;
+      }
+      .header-logo img {
+        width: 90px;
+        height: 90px;
+        object-fit: contain;
+      }
+      .header-center {
+        text-align: center;
+      }
+      .header-center .np {
+        color: #b3261e;
+        font-weight: bold;
+        font-size: 15px;
+        line-height: 1.5;
+      }
+      .header-center .ward-office {
+        color: #b3261e;
+        font-weight: bold;
+        font-size: 22px;
+        margin-top: 2px;
+      }
+      .header-right {
+        text-align: right;
+        font-size: 11px;
+        justify-self: end;
+        width: 100%;
+      }
+      .header-right .qr-box {
+        margin-top: 4px;
+        text-align: right;
+      }
+      .header-right .qr-box img {
+        width: 78px;
+        height: 78px;
+      }
+
+      /* ── STAMP WATERMARK — sits behind the heading block, faded, instead
+         of a solid box at the bottom of the page. ── */
+      .stamp-watermark {
+        position: absolute;
+        top: 8mm;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 130px;
+        height: 130px;
+        opacity: 0.16;
+        z-index: 0;
+        pointer-events: none;
+      }
+      .stamp-watermark img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .header,
+      .ward-meta,
+      .title,
+      .death-grid,
+      .certify,
+      .signature-row,
+      .footer-note {
+        position: relative;
+        z-index: 1;
+      }
+
+      .ward-meta {
+        text-align: center;
+        font-size: 11px;
+        margin-top: 10px;
+        line-height: 1.6;
+      }
+      .ward-meta .dotted {
+        border-bottom: 1px dotted #000;
+        padding: 0 4px;
+      }
+
+      .title {
+        text-align: center;
+        margin: 10px 0 4px;
+      }
+      .title .divider {
+        font-size: 14px;
+        letter-spacing: 4px;
+        color: #444;
+      }
+      .title .h1 {
+        font-weight: bold;
+        font-size: 22px;
+        margin: 2px 0;
+      }
+      .title .h2 {
+        font-weight: bold;
+        font-size: 17px;
+        letter-spacing: 1px;
+      }
+      .title .act-line {
+        font-size: 10px;
+        margin-top: 4px;
+        line-height: 1.4;
+      }
+
+      /* ── FIELD GRID (mirrors the numbered boxes on the reference form) ── */
+      .death-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+          "name    sex"
+          "dob     birthplace"
+          "address deathdate"
+          "address deathtime"
+          "deathplace cause"
+          "informant  regdate";
+        border: 1px solid #000;
+        margin-top: 10px;
+      }
+      .cell {
+        border: 1px solid #000;
+        padding: 6px 10px;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .cell .field-label {
+        font-weight: 600;
+        margin-bottom: 2px;
+      }
+      .cell .field-value {
+        border-bottom: 1px dotted #999;
+        min-height: 14px;
+        padding-bottom: 2px;
+      }
+      .cell .sub-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 4px;
+      }
+      .cell .checkbox {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        margin-right: 10px;
+      }
+      .cell .checkbox .box {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border: 1px solid #000;
+        text-align: center;
+        line-height: 10px;
+        font-size: 9px;
+      }
+
+      .name {
+        grid-area: name;
+      }
+      .sex {
+        grid-area: sex;
+      }
+      .dob {
+        grid-area: dob;
+      }
+      .birthplace {
+        grid-area: birthplace;
+      }
+      .address {
+        grid-area: address;
+      }
+      .deathdate {
+        grid-area: deathdate;
+      }
+      .deathtime {
+        grid-area: deathtime;
+      }
+      .deathplace {
+        grid-area: deathplace;
+      }
+      .cause {
+        grid-area: cause;
+      }
+      .informant {
+        grid-area: informant;
+      }
+      .regdate {
+        grid-area: regdate;
+      }
+
+      /* ── CERTIFICATION STATEMENT ── */
+      .certify {
+        text-align: center;
+        font-size: 11.5px;
+        margin-top: 14px;
+        line-height: 1.6;
+      }
+
+      /* ── SIGNATURE / STAMP ── */
+      .signature-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-top: 26px;
+        font-size: 11px;
+      }
+      .signature-date {
+        min-width: 220px;
+      }
+      .signature-block {
+        text-align: right;
+      }
+      .signature-line {
+        border-bottom: 1px dotted #000;
+        display: inline-flex;
+        align-items: flex-end;
+        justify-content: flex-end;
+        min-width: 220px;
+        min-height: 70px;
+      }
+      .signature-line img {
+        max-height: 68px;
+        max-width: 210px;
+        object-fit: contain;
+      }
+      .signer-title {
+        font-weight: 600;
+        margin-top: 4px;
+      }
+
+      .footer-note {
+        text-align: center;
+        font-size: 9.5px;
+        color: #444;
+        margin-top: 14px;
+      }
+
+      .cert-no-tag {
+        position: absolute;
+        bottom: 8mm;
+        left: 14mm;
+        font-size: 8px;
+        color: #666;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- ── STAMP WATERMARK — behind the heading, not a bottom box ── -->
+      {% if stamp_data_uri %}
+      <div class="stamp-watermark">
+        <img src="{{ stamp_data_uri }}" alt="" />
+      </div>
+      {% endif %}
+
+      <!-- ── HEADER ── -->
+      <div class="header">
+        <div class="header-logo">
+          <img src="{{ logo_data_uri }}" alt="Nepal Government" />
+        </div>
+        <div class="header-center">
+          <div class="np">
+            नेपाल सरकार<br />
+            स्थानीय तह
+          </div>
+          <div class="ward-office">वडा कार्यालय</div>
+        </div>
+        <div class="header-right">
+          <div>दर्ता नं. (Regd. No.) : {{ certificate_no }}</div>
+          <div>मिति (Date) : {{ registration_date }}</div>
+          <div class="qr-box">
+            <img src="{{ qr_data_uri }}" alt="Verify QR" />
+          </div>
+        </div>
+      </div>
+
+      <div class="ward-meta">
+        वडा नं. : <span class="dotted">{{ ward_no_np }}</span>
+        &nbsp;&nbsp; नगरपालिका/गाउँपालिका :
+        <span class="dotted">{{ ward.ward_nepali_municipality }}</span>
+        <br />
+        जिल्ला : <span class="dotted">{{ ward.ward_nepali_district }}</span>
+        &nbsp;&nbsp; प्रदेश :
+        <span class="dotted">{{ ward.ward_nepali_province }}</span>
+      </div>
+
+      <!-- ── TITLE ── -->
+      <div class="title">
+        <div class="divider">⚭</div>
+        <div class="h1">मृत्यु दर्ता प्रमाणपत्र</div>
+        <div class="h2">DEATH CERTIFICATE</div>
+        <div class="act-line">
+          (व्यक्तिगत घटना दर्ता ऐन, २०३३ को दफा ९ तथा नियमावली, २०३४ को नियम ४
+          बमोजिम)<br />
+          (Issued under Section 9 of the Act Relating to Registration of
+          Personal Events, 2033 and Rule 8 of the Regulations, 2034)
+        </div>
+      </div>
+
+      <!-- ── FIELD GRID ── -->
+      <div class="death-grid">
+        <div class="cell name">
+          <div class="field-label">
+            १. मृतकको पूरा नाम (Full Name of Deceased)
+          </div>
+          <div class="field-value">{{ deceased.full_name }}</div>
+        </div>
+        <div class="cell sex">
+          <div class="field-label">२. लिङ्ग (Sex)</div>
+          <div class="sub-row">
+            <span class="checkbox"
+              ><span class="box"
+                >{{ "✓" if deceased.gender == "MALE" else "" }}</span
+              >
+              पुरुष (Male)</span
+            >
+            <span class="checkbox"
+              ><span class="box"
+                >{{ "✓" if deceased.gender == "FEMALE" else "" }}</span
+              >
+              महिला (Female)</span
+            >
+            <span class="checkbox"
+              ><span class="box"
+                >{{ "✓" if deceased.gender == "OTHER" else "" }}</span
+              >
+              अन्य (Other)</span
+            >
+          </div>
+        </div>
+
+        <div class="cell dob">
+          <div class="field-label">३. जन्म मिति (Date of Birth)</div>
+          <div class="field-value">
+            वि.सं. {{ deceased.dob_bs }} &nbsp;&nbsp; ई.सं. {{ deceased.dob_ad
+            }}
+          </div>
+        </div>
+        <div class="cell birthplace">
+          <div class="field-label">४. जन्म स्थान (Place of Birth)</div>
+          <div class="field-value">{{ deceased.birth_place or "" }}</div>
+        </div>
+
+        <div class="cell address">
+          <div class="field-label">५. स्थायी ठेगाना (Permanent Address)</div>
+          <div class="field-value">
+            प्रदेश : {{ deceased_address.province }} &nbsp; जिल्ला : {{
+            deceased_address.district }} &nbsp; स्थानीय तह : {{
+            deceased_address.municipality }} &nbsp; वडा नं. : {{
+            deceased_address.ward_number }}
+          </div>
+          <div class="field-value">
+            टोल/गाउँ : {{ deceased_address.tole or "" }}
+          </div>
+        </div>
+        <div class="cell deathdate">
+          <div class="field-label">६. मृत्यु मिति (Date of Death)</div>
+          <div class="field-value">वि.सं. {{ death_detail.death_date_bs }}</div>
+        </div>
+        <div class="cell deathtime">
+          <div class="field-label">७. मृत्यु समय (Time of Death)</div>
+          <div class="field-value">{{ death_detail.death_time or "" }} बजे</div>
+        </div>
+
+        <div class="cell deathplace">
+          <div class="field-label">८. मृत्यु स्थान (Place of Death)</div>
+          <div class="sub-row">
+            <span class="checkbox"
+              ><span class="box"
+                >{{ "✓" if death_detail.death_place_type == "HOME" else ""
+                }}</span
+              >
+              घर (Home)</span
+            >
+            <span class="checkbox"
+              ><span class="box"
+                >{{ "✓" if death_detail.death_place_type == "HOSPITAL" else ""
+                }}</span
+              >
+              अस्पताल (Hospital)</span
+            >
+            <span class="checkbox"
+              ><span class="box"
+                >{{ "✓" if death_detail.death_place_type == "OTHER" else ""
+                }}</span
+              >
+              अन्य (Other)</span
+            >
+          </div>
+          <div class="field-value">{{ death_place_address_line }}</div>
+        </div>
+        <div class="cell cause">
+          <div class="field-label">९. मृत्युको कारण (Cause of Death)</div>
+          <div class="field-value">{{ death_detail.death_cause or "" }}</div>
+        </div>
+
+        <div class="cell informant">
+          <div class="field-label">
+            १०. सूचना दिने व्यक्तिको विवरण (Informant's Details)
+          </div>
+          <div class="field-value">नाम : {{ informant.informant_name }}</div>
+          <div class="field-value">
+            सम्बन्ध : {{ informant.informant_relationship or "" }}
+          </div>
+          <div class="field-value">ठेगाना : {{ informant_address_line }}</div>
+        </div>
+        <div class="cell regdate">
+          <div class="field-label">११. दर्ता मिति (Date of Registration)</div>
+          <div class="field-value">वि.सं. {{ registration_date }}</div>
+        </div>
+      </div>
+
+      <!-- ── CERTIFICATION STATEMENT ── -->
+      <div class="certify">
+        उपरोक्त विवरण मृत्यु दर्ता रजिस्टरमा दर्ता भएको व्यहोरा प्रमाणित गरिन्छ
+        ।<br />
+        This is to certify that the above particulars of death have been
+        registered in the Death Register of this Ward Office.
+      </div>
+
+      <!-- ── SIGNATURE (stamp is now the header watermark, no bottom box) ── -->
+      <div class="signature-row">
+        <div class="signature-date">मिति (Date) : {{ issue_date }}</div>
+        <div class="signature-block">
+          <div class="signature-line">
+            {% if signer_signature_data_uri %}
+            <img src="{{ signer_signature_data_uri }}" alt="Signature" />
+            {% endif %}
+          </div>
+          <div class="signer-title">
+            {{ signer_name or "" }}<br />
+            {{ signer_designation_np }} / {{ signer_designation_en }}
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        नोट : यस प्रमाणपत्रको कुनै काटछाँट वा केरमेट गरी कुनै परिवर्तन गरेमा
+        कानुन बमोजिम कारबाही हुनेछ ।
+      </div>
+
+      <div class="cert-no-tag">{{ certificate_no }}</div>
+    </div>
+  </body>
+</html>

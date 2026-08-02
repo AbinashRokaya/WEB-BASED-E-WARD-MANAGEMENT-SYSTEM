@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="ne">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      body {
+        font-family: "Noto Sans Devanagari", "Noto Sans", Arial, sans-serif;
+        font-size: 10.5px;
+        color: #000;
+      }
+      .page {
+        width: 100%;
+        height: 100%;
+        padding: 8mm 10mm;
+        position: relative;
+        /* Government-certificate look: double red border, matching the
+           reference form's red corner-ornament border. */
+        border: 3px double #b30000;
+        outline: 1px solid #b30000;
+        outline-offset: -6px;
+      }
+
+      /* ── HEADER ── */
+      /* Fixed, EQUAL-width side columns so the center block (logo aside)
+         is actually centered on the page instead of drifting toward
+         whichever side has the narrower box. */
+      .header {
+        display: grid;
+        grid-template-columns: 210px 1fr 210px;
+        align-items: flex-start;
+      }
+      .header-logo {
+        display: flex;
+        justify-content: flex-start;
+      }
+      .header-logo img {
+        width: 80px;
+        height: 80px;
+        object-fit: contain;
+      }
+      .header-center {
+        text-align: center;
+      }
+      .header-center .np-line1 {
+        font-weight: 600;
+        font-size: 15px;
+        color: #b30000;
+      }
+      .header-center .np-line2 {
+        font-weight: 600;
+        font-size: 13px;
+      }
+      .header-center .office-name {
+        font-weight: bold;
+        font-size: 24px;
+        margin-top: 2px;
+        color: #b30000;
+      }
+      .header-right {
+        border: 1px solid #000;
+        padding: 6px 10px;
+        font-size: 10.5px;
+        justify-self: end;
+        width: 100%;
+      }
+      .header-right div {
+        margin-bottom: 3px;
+      }
+
+      /* ── STAMP WATERMARK — sits behind the heading block, faded, not a
+         bottom-right box like the old layout. ── */
+      .stamp-watermark {
+        position: absolute;
+        top: 6mm;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 120px;
+        height: 120px;
+        opacity: 0.18;
+        z-index: 0;
+        pointer-events: none;
+      }
+      .stamp-watermark img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .header,
+      .ward-meta,
+      .title {
+        position: relative;
+        z-index: 1;
+      }
+
+      .ward-meta {
+        text-align: center;
+        font-size: 11px;
+        margin-top: 8px;
+        line-height: 1.6;
+      }
+      .ward-meta .dotted {
+        border-bottom: 1px dotted #000;
+        padding: 0 6px;
+      }
+
+      .title {
+        text-align: center;
+        margin: 8px 0 4px;
+      }
+      .title .divider {
+        font-size: 13px;
+        letter-spacing: 3px;
+        color: #b30000;
+      }
+      .title .h1 {
+        font-weight: bold;
+        font-size: 20px;
+        margin: 2px 0;
+        color: #b30000;
+      }
+      .title .h2 {
+        font-weight: bold;
+        font-size: 15px;
+        letter-spacing: 1px;
+      }
+      .title .act-line {
+        font-size: 10px;
+        margin-top: 3px;
+      }
+      .title .jurisdiction-line {
+        font-size: 10px;
+        margin-top: 4px;
+      }
+
+      /* ── TWO-COLUMN LAYOUT ── */
+      .grid-2col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 8px;
+        position: relative;
+        z-index: 1;
+      }
+      .section-box {
+        border: 1px solid #000;
+        padding: 6px 10px;
+      }
+      .section-title {
+        font-weight: bold;
+        font-size: 11.5px;
+        margin-bottom: 5px;
+      }
+      .field-row {
+        display: flex;
+        margin-bottom: 4px;
+        font-size: 10.5px;
+      }
+      .field-row .field-label {
+        min-width: 110px;
+        flex-shrink: 0;
+      }
+      .field-row .field-value {
+        flex: 1;
+        border-bottom: 1px dotted #999;
+        padding-left: 4px;
+      }
+      .checkbox-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 2px;
+      }
+      .checkbox {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .checkbox .box {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border: 1px solid #000;
+        text-align: center;
+        line-height: 10px;
+        font-size: 9px;
+      }
+
+      /* ── FAMILY MEMBERS TABLE ── */
+      .family-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 4px;
+        font-size: 9.5px;
+      }
+      .family-table th,
+      .family-table td {
+        border: 1px solid #000;
+        padding: 3px 4px;
+        text-align: center;
+      }
+      .family-table th {
+        background: #f5f5f5;
+        font-weight: 600;
+      }
+
+      /* ── CERTIFICATION / SIGNATURE ── */
+      .certify-box {
+        font-size: 10.5px;
+        line-height: 1.6;
+      }
+      .signer-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin-top: 8px;
+        font-size: 10px;
+      }
+      .signer-col div {
+        margin-bottom: 4px;
+      }
+      .signature-line {
+        border-bottom: 1px dotted #000;
+        display: inline-flex;
+        align-items: flex-end;
+        min-width: 140px;
+        min-height: 50px;
+        vertical-align: middle;
+      }
+      .signature-line img {
+        max-height: 48px;
+        max-width: 135px;
+        object-fit: contain;
+      }
+
+      .qr-box {
+        position: absolute;
+        bottom: 6mm;
+        right: 10mm;
+        text-align: center;
+        z-index: 1;
+      }
+      .qr-box img {
+        width: 60px;
+        height: 60px;
+      }
+      .qr-box .cert-no {
+        font-size: 7.5px;
+        margin-top: 1px;
+      }
+
+      .footer-note {
+        text-align: center;
+        font-size: 9px;
+        color: #444;
+        margin-top: 8px;
+        position: relative;
+        z-index: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- ── STAMP WATERMARK — behind the heading, not a bottom-right box ── -->
+      {% if stamp_data_uri %}
+      <div class="stamp-watermark">
+        <img src="{{ stamp_data_uri }}" alt="" />
+      </div>
+      {% endif %}
+
+      <!-- ── HEADER ── -->
+      <div class="header">
+        <div class="header-logo">
+          <img src="{{ logo_data_uri }}" alt="Nepal Government" />
+        </div>
+        <div class="header-center">
+          <div class="np-line1">नेपाल सरकार</div>
+          <div class="np-line2">स्थानीय तह</div>
+          <div class="office-name">वडा कार्यालय</div>
+        </div>
+        <div class="header-right">
+          <div>दर्ता नं. (Regd. No.) : {{ certificate_no }}</div>
+          <div>मिति (Date) : {{ registration_date }}</div>
+          <div>चलानी नं. (Ref. No.) : {{ certificate_no }}</div>
+        </div>
+      </div>
+
+      <div class="ward-meta">
+        वडा नं. : <span class="dotted">{{ ward_no_np }}</span>
+        &nbsp;&nbsp; गाउँपालिका/नगरपालिका :
+        <span class="dotted">{{ ward.ward_nepali_municipality }}</span>
+        <br />
+        जिल्ला : <span class="dotted">{{ ward.ward_nepali_district }}</span>
+        &nbsp;&nbsp; प्रदेश :
+        <span class="dotted">{{ ward.ward_nepali_province }}</span>
+      </div>
+
+      <!-- ── TITLE ── -->
+      <div class="title">
+        <div class="divider">⚭</div>
+        <div class="h1">बसाईसराई (माइग्रेसन) प्रमाणपत्र</div>
+        <div class="h2">MIGRATION CERTIFICATE</div>
+        <div class="act-line">(स्थानीय प्रशासन ऐन, २०२४ को दफा ११ बमोजिम)</div>
+        <div class="jurisdiction-line">
+          यस वडा कार्यालयको क्षेत्राधिकार भित्र बसोबास गर्ने देहाय बमोजिमको
+          व्यक्तिले यो वडा कार्यालयको क्षेत्राधिकारबाट बसाईसराई गरेको प्रमाणित
+          गरिन्छ ।
+        </div>
+      </div>
+
+      <!-- ── ROW 1: PERSONAL DETAILS / NEW ADDRESS ── -->
+      <div class="grid-2col">
+        <div class="section-box">
+          <div class="section-title">
+            १. व्यक्तिको व्यक्तिगत विवरण (Personal Details)
+          </div>
+          <div class="field-row">
+            <span class="field-label">(क) पुरा नाम (नेपालीमा)</span>
+            <span class="field-value">{{ applicant.full_name_np }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">(ख) लिङ्ग</span>
+            <span class="field-value">
+              <span class="checkbox-group">
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if applicant.gender == "MALE" else "" }}</span
+                  >
+                  पुरुष (Male)</span
+                >
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if applicant.gender == "FEMALE" else "" }}</span
+                  >
+                  महिला (Female)</span
+                >
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if applicant.gender == "OTHER" else "" }}</span
+                  >
+                  अन्य (Other)</span
+                >
+              </span>
+            </span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">(ग) जन्म मिति (वि.सं.)</span>
+            <span class="field-value"
+              >{{ applicant.dob_bs }} (ई.सं. {{ applicant.dob_ad }})</span
+            >
+          </div>
+          <div class="field-row">
+            <span class="field-label">(घ) नागरिकता नं.</span>
+            <span class="field-value">{{ applicant.citizenship_no }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">(ङ) राष्ट्रियता</span>
+            <span class="field-value">{{ applicant.nationality }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">(च) पेशा/व्यवसाय</span>
+            <span class="field-value">{{ applicant.occupation or "" }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">(छ) सम्पर्क नं.</span>
+            <span class="field-value">{{ applicant.contact_no or "" }}</span>
+          </div>
+        </div>
+
+        <div class="section-box">
+          <div class="section-title">
+            ३. नयाँ बसोबास गर्ने ठेगाना (New Address / Destination)
+          </div>
+          <div class="field-row">
+            <span class="field-label">प्रदेश</span>
+            <span class="field-value">{{ new_address.province }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">जिल्ला</span>
+            <span class="field-value">{{ new_address.district }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">स्थानीय तह</span>
+            <span class="field-value">{{ new_address.municipality }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">वडा नं.</span>
+            <span class="field-value">{{ new_address.ward_number }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">टोल/गाउँ</span>
+            <span class="field-value">{{ new_address.tole or "" }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ROW 2: PERMANENT ADDRESS / MIGRATION DETAIL ── -->
+      <div class="grid-2col">
+        <div class="section-box">
+          <div class="section-title">२. स्थायी ठेगाना (Permanent Address)</div>
+          <div class="field-row">
+            <span class="field-label">प्रदेश</span>
+            <span class="field-value">{{ permanent_address.province }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">जिल्ला</span>
+            <span class="field-value">{{ permanent_address.district }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">स्थानीय तह</span>
+            <span class="field-value"
+              >{{ permanent_address.municipality }}</span
+            >
+          </div>
+          <div class="field-row">
+            <span class="field-label">वडा नं.</span>
+            <span class="field-value">{{ permanent_address.ward_number }}</span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">टोल/गाउँ</span>
+            <span class="field-value">{{ permanent_address.tole or "" }}</span>
+          </div>
+        </div>
+
+        <div class="section-box">
+          <div class="section-title">
+            ४. बसाईसराईको विवरण (Migration Details)
+          </div>
+          <div class="field-row">
+            <span class="field-label">(क) बसाईसराई मिति</span>
+            <span class="field-value">
+              {{ migration_detail.migration_date_bs }} (ई.सं. {{
+              migration_detail.migration_date_ad }})
+            </span>
+          </div>
+          <div class="field-row">
+            <span class="field-label">(ख) बसाईसराईको कारण</span>
+            <span class="field-value">
+              <span class="checkbox-group">
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if migration_detail.migration_reason == "EMPLOYMENT"
+                    else "" }}</span
+                  >
+                  रोजगारी</span
+                >
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if migration_detail.migration_reason == "STUDY" else
+                    "" }}</span
+                  >
+                  अध्ययन</span
+                >
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if migration_detail.migration_reason == "BUSINESS"
+                    else "" }}</span
+                  >
+                  व्यवसाय</span
+                >
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if migration_detail.migration_reason == "MARRIAGE"
+                    else "" }}</span
+                  >
+                  विवाह</span
+                >
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if migration_detail.migration_reason == "SETTLEMENT"
+                    else "" }}</span
+                  >
+                  बसोबास</span
+                >
+                <span class="checkbox"
+                  ><span class="box"
+                    >{{ "✓" if migration_detail.migration_reason == "OTHER" else
+                    "" }}</span
+                  >
+                  अन्य : {{ migration_detail.migration_reason_other or ""
+                  }}</span
+                >
+              </span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── ROW 3: FAMILY MEMBERS ── -->
+      <div
+        class="section-box"
+        style="margin-top: 8px; position: relative; z-index: 1"
+      >
+        <div class="section-title">
+          ५. परिवारका सदस्यहरुको विवरण (Family Members Details)
+        </div>
+        <table class="family-table">
+          <thead>
+            <tr>
+              <th style="width: 5%">सि.नं.</th>
+              <th style="width: 22%">नाम, थर</th>
+              <th style="width: 14%">सम्बन्ध</th>
+              <th style="width: 8%">लिङ्ग</th>
+              <th style="width: 20%">जन्म मिति (वि.सं. / ई.सं.)</th>
+              <th style="width: 16%">नागरिकता नं.</th>
+              <th style="width: 15%">कैफियत</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in family_members %}
+            <tr>
+              <td>{{ m.sn }}</td>
+              <td>{{ m.name }}</td>
+              <td>{{ m.relationship }}</td>
+              <td>{{ m.gender }}</td>
+              <td>{{ m.dob_bs }} / {{ m.dob_ad }}</td>
+              <td>{{ m.citizenship_no }}</td>
+              <td>{{ m.remarks }}</td>
+            </tr>
+            {% endfor %} {% for _ in blank_family_rows %}
+            <tr>
+              <td>&nbsp;</td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+              <td></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── ROW 4: CERTIFICATION ── -->
+      <div
+        class="section-box"
+        style="margin-top: 8px; position: relative; z-index: 1"
+      >
+        <div class="section-title">
+          ६. सिफारिस तथा प्रमाणिकरण (Recommendation & Certification)
+        </div>
+        <div class="certify-box">
+          माथि उल्लेखित विवरण सही छ । निजको बसाईसराई भएको कुरा यस वडा कार्यालयको
+          रेकर्डबाट प्रमाणित हुन्छ ।
+        </div>
+
+        <div class="signer-grid">
+          <div class="signer-col">
+            <div>
+              सिफारिस गर्ने कर्मचारीको नाम : {{ recommender_name or "" }}
+            </div>
+            <div>पद : {{ recommender_designation or "" }}</div>
+            <div>मिति (वि.सं.) : {{ issue_date }}</div>
+          </div>
+          <div class="signer-col" style="text-align: right">
+            <div>{{ signer_designation_np }} / {{ signer_designation_en }}</div>
+            <div>नाम : {{ signer_name or "" }}</div>
+            <div class="signature-line">
+              {% if signer_signature_data_uri %}
+              <img src="{{ signer_signature_data_uri }}" alt="Signature" />
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        नोट : यो प्रमाणपत्र कुनै कानुनी कारवाहीको लागि प्रयोग गर्न सकिनेछ ।
+      </div>
+
+      <div class="qr-box">
+        <img src="{{ qr_data_uri }}" alt="Verify QR" />
+        <div class="cert-no">{{ certificate_no }}</div>
+      </div>
+    </div>
+  </body>
+</html>

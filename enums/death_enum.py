@@ -50,10 +50,15 @@ class GenderType(str, enum.Enum):
     FEMALE  = "FEMALE"
     OTHERS  = "OTHERS"
 
+
 class RelatioshipType(str, enum.Enum):
+    SON = "छोरा"
+    DAUGHTER = "छोरी"
+    HUSBAND = "पति"
+    WIFE = "पत्नी"
     FATHER = "बुबा"
     MOTHER = "आमा"
-    GRANDFATHER = "हजुरबुबा"
-    GRANDMOTHER = "हजुरआमा"
-    GUARDIAN = "अभिभावक"
+    BROTHER = "दाजुभाइ"
+    SISTER = "दिदीबहिनी"
+    RELATIVE = "आफन्त"
     OTHER = "अन्य"

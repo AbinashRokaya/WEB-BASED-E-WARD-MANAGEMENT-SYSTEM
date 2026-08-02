@@ -11,8 +11,6 @@ from enums.death_enum import (
     DeathTimePeriodType, DeathPlaceType, DeathCauseType, DeathDocumentType
 )
 from model.ward_model import WardModel
-
-
 class DeathRegistrationModel(Base):
     __tablename__ = "death_registration"
 
@@ -21,20 +19,20 @@ class DeathRegistrationModel(Base):
     register_submitted_by  = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=False)
     register_status        = Column(SAEnum(DeathRegistrationStatus), nullable=False, default=DeathRegistrationStatus.DRAFT)
 
-    # दर्ता नं. / पाना नं. — office-use box on the form
     registration_no        = Column(String(50), nullable=True)
     page_no                = Column(String(50), nullable=True)
 
-    created_at = Column(
-        DateTime,
-        server_default=func.now()
-    )
+    # --- Citizenship docs have two sides — stored separately so both stay legible ---
+    deceased_citizenship_front_path   = Column(String, nullable=True)
+    deceased_citizenship_back_path    = Column(String, nullable=True)
+    informant_citizenship_front_path  = Column(String, nullable=True)
+    informant_citizenship_back_path   = Column(String, nullable=True)
 
-    updated_at = Column(
-        DateTime,
-        server_default=func.now(),
-        onupdate=func.now()
-    )
+    hospital_death_report_path  = Column(String, nullable=True)
+    police_report_path          = Column(String, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     ward              = relationship("WardModel", back_populates="death_registrations")
     submitted_by_user = relationship("UserModel", back_populates="death_registrations")
@@ -44,8 +42,6 @@ class DeathRegistrationModel(Base):
     address           = relationship("DeathAddressModel", back_populates="registration", uselist=False)
     certificate       = relationship("DeathCertificateModel", back_populates="registration", uselist=False)
     reject            = relationship("DeathRejectModel", back_populates="registration")
-
-
 class DeathRejectModel(Base):
     __tablename__ = "death_reject"
 
