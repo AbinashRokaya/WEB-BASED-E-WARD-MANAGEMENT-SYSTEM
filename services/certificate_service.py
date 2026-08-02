@@ -123,12 +123,17 @@ def generate_qr(cert_id: uuid.UUID) -> str:
     return f"certificates/qr/{filename}"  # relative to /static mount
 
 
-def render_certificate_pdf(cert_id: uuid.UUID, context: dict) -> str:
+def render_certificate_pdf(cert_id: uuid.UUID, context: dict, template_name: str = "birth_certificate.html") -> str:
     """
     context must contain everything the Jinja2 template needs:
     child, father, mother, informant, address, ward, registration meta, qr_path
+
+    template_name defaults to the birth certificate template so existing
+    call sites (which only pass cert_id and context) keep working
+    unchanged. Other certificate types (death, migration, ...) pass their
+    own template_name explicitly.
     """
-    template = jinja_env.get_template("birth_certificate.html")
+    template = jinja_env.get_template(template_name)
     html = template.render(**context)
 
     filename = f"{cert_id}.pdf"
@@ -147,7 +152,6 @@ def render_certificate_pdf(cert_id: uuid.UUID, context: dict) -> str:
         browser.close()
 
     return f"certificates/pdf/{filename}"  # relative to /static mount
-
 
 # ── helpers for the parent lookup + image embedding ────────────────────────
 def _parent_type_value(p) -> str:

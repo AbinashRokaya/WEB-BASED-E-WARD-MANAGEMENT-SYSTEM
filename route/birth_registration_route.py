@@ -1,5 +1,5 @@
 # router/birth_registration_router.py
-from fastapi import HTTPException, APIRouter, Depends
+from fastapi import HTTPException, APIRouter, Depends, UploadFile, File, Form
 from fastapi.responses import JSONResponse
 from uuid import UUID
 from database.db import get_db
@@ -13,10 +13,17 @@ from model.enums import BirthRegistrationStatus
 from schema.birth_registration_schema import (
     BirthRegistrationRequest, BirthRegistrationResponse,
     UpdateRegistrationRequest, RejectRequest, RejectResponse,
-    UpdateParentRequest, UpdateNomineeRequest, UpdateAddressRequest,AddressResponse,BirthRegistrationResponseAll
-
+    UpdateParentRequest, ParentResponse, UpdateNomineeRequest,
+    UpdateAddressRequest, AddressResponse, BirthRegistrationResponseAll,
+    ChildRequest, ParentRequest, NomineeRequest, AddressRequest,
 )
+import os
+import shutil
+import uuid as uuid_lib
+from typing import Optional
 from auth.current_user import require_permission
+import json
+from pydantic import ValidationError
 
 router = APIRouter(
     prefix="/v1/birth-registration",
@@ -28,72 +35,159 @@ def serialize(obj, schema):
     return schema.from_orm(obj).model_dump(mode="json")
 
 
-@router.post("/")
-def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_db), current_user=Depends(require_permission("read_user"))):
-    try:
-        ward = db.query(WardModel).filter(
-            WardModel.ward_id == request.register_ward_id
-        ).first()
-        if not ward:
-            raise HTTPException(status_code=404, detail="Ward not found")
+ALLOWED_DOC_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"}
+BIRTH_UPLOAD_DIR = "static/birth_registration"
+def _get_user_ward_or_404(db, current_user) -> WardModel:
+    """Look up the logged-in citizen's own ward — single source of truth
+    for 'my own ward' in this router, same as recommendation_router.py."""
+    if not current_user.user_ward_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Your account has no registered ward on file. Please contact an administrator.",
+        )
+    ward = db.query(WardModel).filter(WardModel.ward_id == current_user.user_ward_id).first()
+    if not ward:
+        raise HTTPException(
+            status_code=404,
+            detail="Your registered ward could not be found. Please contact an administrator.",
+        )
+    return ward
 
-        user = db.query(UserModel).filter(
-            UserModel.user_id == current_user.user_id
-        ).first()
+
+def _birth_address_from_ward(ward: WardModel, tole: str = "") -> dict:
+    """Builds the AddressModel field dict entirely from a WardModel row —
+    the stored address always reflects real ward data, never client input
+    (except tole, which is genuinely just free text)."""
+    return {
+        "child_province": ward.ward_province,
+        "child_district": ward.ward_district,
+        "child_municipality": ward.ward_municipality,
+        "child_ward_number": ward.ward_no,
+        "child_tole": tole or "",
+        "ward_nepali_province": ward.ward_nepali_province,
+        "ward_nepali_district": ward.ward_nepali_district,
+        "ward_nepali_municipality": ward.ward_nepali_municipality,
+        "ward_nepali_name": ward.ward_nepali_name,
+        "ward_type": ward.ward_type,
+    }
+
+def _save_birth_document(registration_id: UUID, file: UploadFile, suffix: str) -> str:
+    if file.content_type not in ALLOWED_DOC_TYPES:
+        raise HTTPException(status_code=400, detail="Only PNG/JPEG/WEBP/PDF files allowed")
+
+    ext = os.path.splitext(file.filename)[1] or ".png"
+    reg_dir = os.path.join(BIRTH_UPLOAD_DIR, str(registration_id))
+    os.makedirs(reg_dir, exist_ok=True)
+
+    filename = f"{suffix}_{uuid_lib.uuid4().hex[:8]}{ext}"
+    filepath = os.path.join(reg_dir, filename)
+
+    with open(filepath, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # path relative to /static mount
+    return f"birth_registration/{registration_id}/{filename}"
+
+
+@router.post("/")
+def create_birth_registration(
+    register_ward_id: Optional[UUID] = Form(None),  # kept for backward compat, ignored server-side
+    child: str = Form(...),
+    parents: str = Form(...),
+    nominees: str = Form("[]"),
+    address: str = Form(...),
+    father_citizenship_front: Optional[UploadFile] = File(None),
+    father_citizenship_back: Optional[UploadFile] = File(None),
+    mother_citizenship_front: Optional[UploadFile] = File(None),
+    mother_citizenship_back: Optional[UploadFile] = File(None),
+    hospital_birth_certificate: Optional[UploadFile] = File(None),
+    vaccination_card: Optional[UploadFile] = File(None),
+    db=Depends(get_db),
+    current_user=Depends(require_permission("read_user")),
+):
+    try:
+        try:
+            child_data = ChildRequest.model_validate(json.loads(child))
+            parents_data = [ParentRequest.model_validate(p) for p in json.loads(parents)]
+            nominees_data = [NomineeRequest.model_validate(n) for n in json.loads(nominees)]
+            address_data = AddressRequest.model_validate(json.loads(address))
+        except (json.JSONDecodeError, ValidationError) as e:
+            raise HTTPException(status_code=422, detail=f"Invalid JSON in form field: {e}")
+
+        # ── Ward / address resolution — ENTIRELY server-side ───────────
+        # Unlike recommendation letters, birth registration has no
+        # legitimate case for registering under a ward other than the
+        # citizen's own, so we always derive the ward (and every address
+        # field except tole) from current_user.user_ward_id — the same
+        # ward GET /my-address returns. Whatever register_ward_id/address
+        # the client submits is display-only and is never trusted here.
+        ward = _get_user_ward_or_404(db, current_user)
+        tole = (address_data.child_tole or "").strip()
+
+        user = db.query(UserModel).filter(UserModel.user_id == current_user.user_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
-        if len(request.parents) < 1:
+        if len(parents_data) < 1:
             raise HTTPException(status_code=400, detail="At least one parent is required")
 
         registration = BirthRegistrationModel(
-            register_ward_id=request.register_ward_id,
+            register_ward_id=ward.ward_id,
             register_submitted_by=current_user.user_id,
-            register_status=BirthRegistrationStatus.SUBMITTED
+            register_status=BirthRegistrationStatus.SUBMITTED,
         )
         db.add(registration)
         db.flush()
 
-        child = ChildModel(
+        child_obj = ChildModel(
             registration_id=registration.registration_id,
-            **request.child.model_dump()
+            **child_data.model_dump(),
         )
-        db.add(child)
+        db.add(child_obj)
 
-        for parent_data in request.parents:
-            parent = ParentModel(
+        for parent_data in parents_data:
+            db.add(ParentModel(
                 registration_id=registration.registration_id,
-                **parent_data.model_dump()
-            )
-            db.add(parent)
+                **parent_data.model_dump(),
+            ))
 
-        for nominee_data in request.nominees:
-            nominee = NomineeModel(
+        for nominee_data in nominees_data:
+            db.add(NomineeModel(
                 nominee_registration_id=registration.registration_id,
-                **nominee_data.model_dump()
-            )
-            db.add(nominee)
+                **nominee_data.model_dump(),
+            ))
 
-        # Nepali province/district/municipality (and now ward_type — the
-        # महानगरपालिका/उपमहानगरपालिका/नगरपालिका/गाउँपालिका classification)
-        # are authoritative on the ward record — pull them from there rather
-        # than trusting client input, so they can never drift out of sync
-        # with the official ward name. Nepali tole has no ward-level
-        # source, so that one does come from the request (typed by the citizen).
-        address = AddressModel(
+        address_obj = AddressModel(
             registration_id=registration.registration_id,
-            child_province=request.address.child_province,
-            child_district=request.address.child_district,
-            child_municipality=request.address.child_municipality,
-            child_ward_number=request.address.child_ward_number,
-            child_tole=request.address.child_tole,
-            ward_nepali_province=ward.ward_nepali_province,
-            ward_nepali_district=ward.ward_nepali_district,
-            ward_nepali_municipality=ward.ward_nepali_municipality,
-            ward_nepali_name=request.address.ward_nepali_name,
-            ward_type=ward.ward_type,
+            **_birth_address_from_ward(ward, tole=tole),
         )
-        db.add(address)
+        db.add(address_obj)
+
+        # ---- documents, uploaded in the same request (unchanged) ----
+        if father_citizenship_front:
+            registration.father_citizenship_front_path = _save_birth_document(
+                registration.registration_id, father_citizenship_front, "father_citizenship_front"
+            )
+        if father_citizenship_back:
+            registration.father_citizenship_back_path = _save_birth_document(
+                registration.registration_id, father_citizenship_back, "father_citizenship_back"
+            )
+        if mother_citizenship_front:
+            registration.mother_citizenship_front_path = _save_birth_document(
+                registration.registration_id, mother_citizenship_front, "mother_citizenship_front"
+            )
+        if mother_citizenship_back:
+            registration.mother_citizenship_back_path = _save_birth_document(
+                registration.registration_id, mother_citizenship_back, "mother_citizenship_back"
+            )
+        if hospital_birth_certificate:
+            registration.hospital_birth_certificate_path = _save_birth_document(
+                registration.registration_id, hospital_birth_certificate, "hospital_certificate"
+            )
+        if vaccination_card:
+            registration.vaccination_card_path = _save_birth_document(
+                registration.registration_id, vaccination_card, "vaccination_card"
+            )
 
         db.commit()
         db.refresh(registration)
@@ -104,43 +198,17 @@ def create_birth_registration(request: BirthRegistrationRequest, db=Depends(get_
                 "success": True,
                 "status_code": 201,
                 "message": "Birth registration created successfully",
-                "data": serialize(registration, BirthRegistrationResponse)
-            }
+                "data": serialize(registration, BirthRegistrationResponse),
+            },
         )
 
     except HTTPException:
+        db.rollback()
         raise
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-@router.get("/all")
-def get_all_birth_registrations(db=Depends(get_db), current_user=Depends(require_permission("read_user"))):
-    try:
-        print(f"Current user: {current_user.user_id}, Role: {current_user.user_role}")
-        registrations = (
-            db.query(BirthRegistrationModel).filter(BirthRegistrationModel.register_status == "SUBMITTED",BirthRegistrationModel.register_ward_id== current_user.user_ward_id)
-            .all()
-        )
-        print(f"Fetched {len(registrations)} registrations for user {current_user.user_id}")
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "status_code": 200,
-                "message": "Birth registrations fetched successfully",
-                "total": len(registrations),
-                "data": [
-                    BirthRegistrationResponseAll.model_validate(
-                        registration
-                    ).model_dump(mode="json")
-                    for registration in registrations
-                ]
-            }
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    
 
 @router.get("/")
 def get_all_registrations(
@@ -174,8 +242,26 @@ def get_all_registrations(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-
+@router.get("/my-address")
+def get_my_birth_registration_address(
+    db=Depends(get_db),
+    current_user=Depends(require_permission("read_user")),
+):
+    ward = _get_user_ward_or_404(db, current_user)
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "status_code": 200,
+            "message": "Address fetched successfully",
+            "data": {
+                "register_ward_id": str(ward.ward_id),
+                "ward_no": ward.ward_no,
+                "ward_name": ward.ward_name,
+                **_birth_address_from_ward(ward),
+            },
+        },
+    )
 @router.get("/{registration_id}")
 def get_registration(registration_id: UUID, db=Depends(get_db)):
     try:
@@ -202,7 +288,6 @@ def get_registration(registration_id: UUID, db=Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-
 @router.put("/{registration_id}")
 def update_registration(
     registration_id: UUID,
@@ -216,24 +301,20 @@ def update_registration(
         if not registration:
             raise HTTPException(status_code=404, detail="Registration not found")
 
-       
         if registration.register_status == BirthRegistrationStatus.APPROVED:
             raise HTTPException(
                 status_code=400,
                 detail="Approved registrations cannot be edited"
             )
 
-        
         if request.register_status:
             registration.register_status = request.register_status
 
-       
         if request.child and registration.child:
             child_data = request.child.model_dump(exclude_unset=True)
             for field, value in child_data.items():
                 setattr(registration.child, field, value)
 
-        
         if request.address and registration.address:
             address_data = request.address.model_dump(exclude_unset=True)
             for field, value in address_data.items():
@@ -257,7 +338,6 @@ def update_registration(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @router.delete("/{registration_id}")
@@ -299,7 +379,6 @@ def delete_registration(registration_id: UUID, db=Depends(get_db)):
 # NESTED ROUTES — Parent / Nominee / Reject
 # ══════════════════════════════════════════════
 
-# ── Update a specific parent ───────────────────
 @router.put("/{registration_id}/parents/{parent_id}")
 def update_parent(
     registration_id: UUID,
@@ -327,7 +406,7 @@ def update_parent(
                 "success": True,
                 "status_code": 200,
                 "message": "Parent updated successfully",
-                "data": serialize(parent, ParentResponse) if False else request.model_dump(exclude_unset=True)
+                "data": serialize(parent, ParentResponse)
             }
         )
 
@@ -395,10 +474,8 @@ def reject_registration(
                 detail="Only SUBMITTED registrations can be rejected"
             )
 
-     
         registration.register_status = BirthRegistrationStatus.REJECTED
 
-        
         reject = RejectModel(
             registration_id=registration_id,
             reject_text=request.reject_text
@@ -457,31 +534,86 @@ def approve_registration(registration_id: UUID, db=Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    
 
-@router.get("/all")
-def get_all_ward_chairperson_registrations(
+
+@router.post("/{registration_id}/upload-documents")
+def upload_birth_documents(
+    registration_id: UUID,
+    father_citizenship_front: Optional[UploadFile] = File(None),
+    father_citizenship_back: Optional[UploadFile] = File(None),
+    mother_citizenship_front: Optional[UploadFile] = File(None),
+    mother_citizenship_back: Optional[UploadFile] = File(None),
+    hospital_birth_certificate: Optional[UploadFile] = File(None),
+    vaccination_card: Optional[UploadFile] = File(None),
     db=Depends(get_db),
-    current_user=Depends(require_permission("read_user"))
+    current_user=Depends(require_permission("update_registration")),
 ):
+    registration = (
+        db.query(BirthRegistrationModel)
+        .filter(BirthRegistrationModel.registration_id == registration_id)
+        .first()
+    )
+    if not registration:
+        raise HTTPException(status_code=404, detail="Birth registration not found")
+
+    if not any([
+        father_citizenship_front, father_citizenship_back,
+        mother_citizenship_front, mother_citizenship_back,
+        hospital_birth_certificate, vaccination_card,
+    ]):
+        raise HTTPException(status_code=400, detail="No file provided")
+
     try:
-        registrations = (
-            db.query(BirthRegistrationModel)
-            .filter(BirthRegistrationModel.register_ward_id == current_user.user_ward_id)
-            .all()
-        )
+        if father_citizenship_front:
+            registration.father_citizenship_front_path = _save_birth_document(
+                registration_id, father_citizenship_front, "father_citizenship_front"
+            )
+        if father_citizenship_back:
+            registration.father_citizenship_back_path = _save_birth_document(
+                registration_id, father_citizenship_back, "father_citizenship_back"
+            )
+        if mother_citizenship_front:
+            registration.mother_citizenship_front_path = _save_birth_document(
+                registration_id, mother_citizenship_front, "mother_citizenship_front"
+            )
+        if mother_citizenship_back:
+            registration.mother_citizenship_back_path = _save_birth_document(
+                registration_id, mother_citizenship_back, "mother_citizenship_back"
+            )
+        if hospital_birth_certificate:
+            registration.hospital_birth_certificate_path = _save_birth_document(
+                registration_id, hospital_birth_certificate, "hospital_certificate"
+            )
+        if vaccination_card:
+            registration.vaccination_card_path = _save_birth_document(
+                registration_id, vaccination_card, "vaccination_card"
+            )
+
+        db.commit()
+        db.refresh(registration)
+
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
                 "status_code": 200,
-                "message": "Registrations fetched successfully",
-                "total": len(registrations),
-                "data": [
-                    BirthRegistrationResponseAll.model_validate(r).model_dump(mode="json")
-                    for r in registrations
-                ],
+                "message": "Birth registration documents uploaded successfully",
+                "data": {
+                    "father_citizenship_front_path": registration.father_citizenship_front_path,
+                    "father_citizenship_back_path": registration.father_citizenship_back_path,
+                    "mother_citizenship_front_path": registration.mother_citizenship_front_path,
+                    "mother_citizenship_back_path": registration.mother_citizenship_back_path,
+                    "hospital_birth_certificate_path": registration.hospital_birth_certificate_path,
+                    "vaccination_card_path": registration.vaccination_card_path,
+                },
             },
         )
+
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+    
+

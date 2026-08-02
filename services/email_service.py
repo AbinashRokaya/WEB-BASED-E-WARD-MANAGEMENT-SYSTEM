@@ -81,3 +81,22 @@ citizenship certificate for verification, or contact them directly.
 This is an automated notification from the Birth Registration System.
 """
     _send_email(to_email, subject, body, context="registration_rejected")
+
+# services/email_service.py — add this function
+
+def send_recommendation_certificate_ready_email(to_email: str, applicant_full_name: str, certificate_no: str, download_url: str):
+    if not to_email:
+        logger.warning("send_recommendation_certificate_ready_email: no email on file — skipping")
+        return
+
+    subject = "Recommendation Letter Issued / सिफारिस पत्र जारी भयो"
+    body = f"""Dear User,
+
+The recommendation letter for {applicant_full_name} has been issued.
+
+Certificate No: {certificate_no}
+Download: {download_url}
+
+This is an automated notification from the Recommendation Letter System.
+"""
+    _send_email(to_email, subject, body, context="recommendation_certificate_ready")

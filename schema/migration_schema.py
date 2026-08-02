@@ -10,9 +10,11 @@ from enums.migration_enum import (
     MigrationRegistrationStatus,
     MigrationReasonType,
     MigrationAddressType,
+    OccupationType,
 )
 
 NEPALI_REGEX = re.compile(r'^[\u0900-\u097F\s।.,()-]+$')
+BS_DATE_REGEX = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 def _validate_nepali(value: Optional[str]) -> Optional[str]:
@@ -26,22 +28,47 @@ def _validate_nepali(value: Optional[str]) -> Optional[str]:
     return value
 
 
+def _validate_bs_date(value: Optional[str]) -> Optional[str]:
+    # BS (Bikram Sambat) dates are stored as strings rather than Pydantic
+    # `date` objects because BS months don't follow Gregorian day-counts —
+    # some BS months legitimately run to 32 days, which the Gregorian
+    # `date` parser would reject as out-of-range.
+    if value is None:
+        return value
+    value = value.strip()
+    if value == "":
+        return value
+    if not BS_DATE_REGEX.fullmatch(value):
+        raise ValueError("BS date must be in YYYY-MM-DD format")
+    _, month, day = (int(p) for p in value.split("-"))
+    if not (1 <= month <= 12):
+        raise ValueError("Month must be between 1 and 12")
+    if not (1 <= day <= 32):
+        raise ValueError("Day must be between 1 and 32")
+    return value
+
+
 # ── Applicant ──────────────────────────────────────────────
 class ApplicantRequest(BaseModel):
     applicant_full_name_np: str
     applicant_full_name_en: str
     applicant_gender: GenderType
-    applicant_dob_bs: date
+    applicant_dob_bs: str
     applicant_dob_ad: Optional[date] = None
     applicant_citizenship_no: str
     applicant_nationality: str = "NEPALESE"
-    applicant_occupation: Optional[str] = None
+    applicant_occupation: Optional[OccupationType] = None
     applicant_contact_no: Optional[str] = None
 
     @field_validator("applicant_full_name_np", mode="before")
     @classmethod
     def validate_np_name(cls, value):
         return _validate_nepali(value)
+
+    @field_validator("applicant_dob_bs", mode="before")
+    @classmethod
+    def validate_dob_bs(cls, value):
+        return _validate_bs_date(value)
 
 
 class ApplicantResponse(ApplicantRequest):
@@ -54,17 +81,22 @@ class UpdateApplicantRequest(BaseModel):
     applicant_full_name_np: Optional[str] = None
     applicant_full_name_en: Optional[str] = None
     applicant_gender: Optional[GenderType] = None
-    applicant_dob_bs: Optional[date] = None
+    applicant_dob_bs: Optional[str] = None
     applicant_dob_ad: Optional[date] = None
     applicant_citizenship_no: Optional[str] = None
     applicant_nationality: Optional[str] = None
-    applicant_occupation: Optional[str] = None
+    applicant_occupation: Optional[OccupationType] = None
     applicant_contact_no: Optional[str] = None
 
     @field_validator("applicant_full_name_np", mode="before")
     @classmethod
     def validate_np_name(cls, value):
         return _validate_nepali(value)
+
+    @field_validator("applicant_dob_bs", mode="before")
+    @classmethod
+    def validate_dob_bs(cls, value):
+        return _validate_bs_date(value)
 
 
 # ── Address (used 3x per registration: PERMANENT / CURRENT / NEW) ──
@@ -75,6 +107,10 @@ class MigrationAddressRequest(BaseModel):
     municipality: str
     ward_number: int
     tole: Optional[str] = None
+    province_np: Optional[str] = None
+    district_np: Optional[str] = None
+    municipality_np: Optional[str] = None
+    ward_name_np: Optional[str] = None
 
 
 class MigrationAddressResponse(BaseModel):
@@ -85,6 +121,10 @@ class MigrationAddressResponse(BaseModel):
     municipality: str
     ward_number: int
     tole: Optional[str] = None
+    province_np: Optional[str] = None
+    district_np: Optional[str] = None
+    municipality_np: Optional[str] = None
+    ward_name_np: Optional[str] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -95,14 +135,22 @@ class UpdateMigrationAddressRequest(BaseModel):
     municipality: Optional[str] = None
     ward_number: Optional[int] = None
     tole: Optional[str] = None
-
+    province_np: Optional[str] = None
+    district_np: Optional[str] = None
+    municipality_np: Optional[str] = None
+    ward_name_np: Optional[str] = None
 
 # ── Migration Detail ────────────────────────────────────────
 class MigrationDetailRequest(BaseModel):
-    migration_date_bs: Optional[date] = None
+    migration_date_bs: Optional[str] = None
     migration_date_ad: Optional[date] = None
     migration_reason: MigrationReasonType = MigrationReasonType.OTHER
     migration_reason_other: Optional[str] = None
+
+    @field_validator("migration_date_bs", mode="before")
+    @classmethod
+    def validate_migration_date_bs(cls, value):
+        return _validate_bs_date(value)
 
 
 class MigrationDetailResponse(MigrationDetailRequest):
@@ -112,10 +160,15 @@ class MigrationDetailResponse(MigrationDetailRequest):
 
 
 class UpdateMigrationDetailRequest(BaseModel):
-    migration_date_bs: Optional[date] = None
+    migration_date_bs: Optional[str] = None
     migration_date_ad: Optional[date] = None
     migration_reason: Optional[MigrationReasonType] = None
     migration_reason_other: Optional[str] = None
+
+    @field_validator("migration_date_bs", mode="before")
+    @classmethod
+    def validate_migration_date_bs(cls, value):
+        return _validate_bs_date(value)
 
 
 # ── Family Member ───────────────────────────────────────────
@@ -124,7 +177,7 @@ class FamilyMemberRequest(BaseModel):
     member_name_en: Optional[str] = None
     member_relationship: Optional[RelatioshipType] = None
     member_gender: Optional[GenderType] = None
-    member_dob_bs: Optional[date] = None
+    member_dob_bs: Optional[str] = None
     member_dob_ad: Optional[date] = None
     member_citizenship_no: Optional[str] = None
     member_remarks: Optional[str] = None
@@ -133,6 +186,11 @@ class FamilyMemberRequest(BaseModel):
     @classmethod
     def validate_np_name(cls, value):
         return _validate_nepali(value)
+
+    @field_validator("member_dob_bs", mode="before")
+    @classmethod
+    def validate_dob_bs(cls, value):
+        return _validate_bs_date(value)
 
 
 class FamilyMemberResponse(FamilyMemberRequest):
@@ -146,7 +204,7 @@ class UpdateFamilyMemberRequest(BaseModel):
     member_name_en: Optional[str] = None
     member_relationship: Optional[RelatioshipType] = None
     member_gender: Optional[GenderType] = None
-    member_dob_bs: Optional[date] = None
+    member_dob_bs: Optional[str] = None
     member_dob_ad: Optional[date] = None
     member_citizenship_no: Optional[str] = None
     member_remarks: Optional[str] = None
@@ -155,6 +213,11 @@ class UpdateFamilyMemberRequest(BaseModel):
     @classmethod
     def validate_np_name(cls, value):
         return _validate_nepali(value)
+
+    @field_validator("member_dob_bs", mode="before")
+    @classmethod
+    def validate_dob_bs(cls, value):
+        return _validate_bs_date(value)
 
 
 # ── Reject ───────────────────────────────────────────────────
@@ -169,9 +232,18 @@ class RejectResponse(RejectRequest):
 
 
 # ── Top-level registration ──────────────────────────────────
+# ── Documents ────────────────────────────────────────────────
+class MigrationRegistrationDocumentsResponse(BaseModel):
+    applicant_citizenship_front_path: Optional[str] = None
+    applicant_citizenship_back_path: Optional[str] = None
+    address_proof_path: Optional[str] = None
+    destination_proof_path: Optional[str] = None
+    applicant_photo_path: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── Top-level registration ──────────────────────────────────
 class MigrationRegistrationRequest(BaseModel):
-    register_ward_id: UUID
-    register_submitted_by: int
     applicant: ApplicantRequest
     addresses: List[MigrationAddressRequest]      # expect exactly 3: PERMANENT, CURRENT, NEW
     migration_detail: MigrationDetailRequest
@@ -217,6 +289,13 @@ class MigrationRegistrationResponse(BaseModel):
     family_members: Optional[List[FamilyMemberResponse]] = []
     reject: Optional[List[RejectResponse]] = []
 
+    # ---- documents ----
+    applicant_citizenship_front_path: Optional[str] = None
+    applicant_citizenship_back_path: Optional[str] = None
+    address_proof_path: Optional[str] = None
+    destination_proof_path: Optional[str] = None
+    applicant_photo_path: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -229,6 +308,12 @@ class UpdateMigrationRegistrationRequest(BaseModel):
     enclosure_destination_proof: Optional[bool] = None
     enclosure_photo_count: Optional[int] = None
     enclosure_other: Optional[str] = None
+    # Optional: allow clearing/replacing a doc path via this endpoint too
+    applicant_citizenship_front_path: Optional[str] = None
+    applicant_citizenship_back_path: Optional[str] = None
+    address_proof_path: Optional[str] = None
+    destination_proof_path: Optional[str] = None
+    applicant_photo_path: Optional[str] = None
 
 
 class MigrationRegistrationResponseAll(BaseModel):
@@ -242,5 +327,12 @@ class MigrationRegistrationResponseAll(BaseModel):
     migration_detail: Optional[MigrationDetailResponse] = None
     family_members: List[FamilyMemberResponse] = []
     reject: List[RejectResponse] = []
+
+    # ---- documents ----
+    applicant_citizenship_front_path: Optional[str] = None
+    applicant_citizenship_back_path: Optional[str] = None
+    address_proof_path: Optional[str] = None
+    destination_proof_path: Optional[str] = None
+    applicant_photo_path: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

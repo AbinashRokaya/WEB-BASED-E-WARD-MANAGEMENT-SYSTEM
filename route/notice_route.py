@@ -95,7 +95,79 @@ def create_notice(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     
+@router.get("/ward-secretary/all")
+def get_my_ward_notices(
+    notice_type: Optional[NoticeType] = None,
+    notice_status: Optional[NoticeStatus] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("read_user")),
+):
+    try:
+        query = db.query(Notice).filter(
+            Notice.notice_ward_id == current_user.user_ward_id
+        )
 
+        if notice_type:
+            query = query.filter(Notice.notice_type == notice_type)
+        if notice_status:
+            query = query.filter(Notice.notice_status == notice_status)
+        if date_from:
+            query = query.filter(Notice.created_at >= datetime.combine(date_from, time.min))
+        if date_to:
+            query = query.filter(Notice.created_at <= datetime.combine(date_to, time.max))
+
+        notices = query.order_by(Notice.created_at.desc()).all()
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "data": [NoticeResponse.model_validate(notice).model_dump(mode="json") for notice in notices]
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/officer/all")
+def get_all_notices_officer(
+    notice_type: Optional[NoticeType] = None,
+    notice_status: Optional[NoticeStatus] = None,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("read_user")),
+):
+    try:
+        query = db.query(Notice)  # no ward filter — officer sees every ward
+
+        if notice_type:
+            query = query.filter(Notice.notice_type == notice_type)
+        if notice_status:
+            query = query.filter(Notice.notice_status == notice_status)
+        if date_from:
+            query = query.filter(Notice.created_at >= datetime.combine(date_from, time.min))
+        if date_to:
+            query = query.filter(Notice.created_at <= datetime.combine(date_to, time.max))
+
+        notices = query.order_by(Notice.created_at.desc()).all()
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "data": [NoticeResponse.model_validate(notice).model_dump(mode="json") for notice in notices]
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @router.get("/{ward_id}/all")
 def get_all_notices(
     ward_id: UUID,
@@ -131,4 +203,52 @@ def get_all_notices(
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.patch("/{notice_id}")
+def update_notice(
+    notice_id: UUID,
+    notice_title: Optional[str] = Form(None),
+    notice_description: Optional[str] = Form(None),
+    notice_type: Optional[NoticeType] = Form(None),
+    status: Optional[NoticeStatus] = Form(None),
+    attachment: UploadFile = File(None),
+    db=Depends(get_db),
+    current_user=Depends(require_permission("read_user")),
+):
+    try:
+        notice = db.query(Notice).filter(Notice.notice_id == notice_id).first()
+        if not notice:
+            raise HTTPException(status_code=404, detail="Notice not found")
+        if notice.notice_ward_id != current_user.user_ward_id:
+            raise HTTPException(status_code=403, detail="You can only edit notices for your own ward")
+
+        if notice_title is not None:
+            notice.notice_title = notice_title
+        if notice_description is not None:
+            notice.notice_description = notice_description
+        if notice_type is not None:
+            notice.notice_type = notice_type
+        if status is not None:
+            notice.notice_status = status
+        if attachment:
+            path, mime_type = save_notice_attachment(notice.notice_id, attachment)
+            notice.notice_attachment_path = path
+            notice.notice_attachment_type = mime_type
+
+        db.commit()
+        db.refresh(notice)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "status_code": 200,
+                "message": "Notice updated successfully",
+                "data": NoticeResponse.model_validate(notice).model_dump(mode="json"),
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))

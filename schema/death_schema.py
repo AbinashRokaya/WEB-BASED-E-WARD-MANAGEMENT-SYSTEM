@@ -28,7 +28,7 @@ class DeceasedRequest(BaseModel):
 
     deceased_gender: GenderType
     deceased_dob_bs: Optional[date] = None
-    deceased_dob_ad:Optional[date]=None
+    deceased_dob_ad: Optional[date] = None
 
     deceased_age_years: Optional[int] = None
     deceased_age_months: Optional[int] = None
@@ -74,7 +74,7 @@ class UpdateDeceasedRequest(BaseModel):
     deceased_nepali_last_name: Optional[str] = None
     deceased_gender: Optional[GenderType] = None
     deceased_dob_bs: Optional[date] = None
-    deceased_dob_ad:Optional[date]=None
+    deceased_dob_ad: Optional[date] = None
     deceased_age_years: Optional[int] = None
     deceased_age_months: Optional[int] = None
     deceased_age_days: Optional[int] = None
@@ -269,18 +269,48 @@ class DeathRejectResponse(DeathRejectRequest):
 
 
 # ══════════════════════════════════════════════
+# Documents — citizenship docs have two sides,
+# stored/returned separately so both stay legible
+# ══════════════════════════════════════════════
+
+class DeathRegistrationDocumentsResponse(BaseModel):
+    deceased_citizenship_front_path: Optional[str] = None
+    deceased_citizenship_back_path: Optional[str] = None
+    informant_citizenship_front_path: Optional[str] = None
+    informant_citizenship_back_path: Optional[str] = None
+    hospital_death_report_path: Optional[str] = None
+    police_report_path: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ══════════════════════════════════════════════
 # Registration (top level)
 # ══════════════════════════════════════════════
 
 class DeathRegistrationRequest(BaseModel):
     register_ward_id: UUID
-    register_submitted_by: int
     registration_no: Optional[str] = None
     page_no: Optional[str] = None
     deceased: DeceasedRequest
     death_detail: DeathDetailRequest
     informant: InformantRequest
     address: DeathAddressRequest
+
+
+class UpdateDeathRegistrationRequest(BaseModel):
+    register_status: Optional[DeathRegistrationStatus] = None
+    registration_no: Optional[str] = None
+    page_no: Optional[str] = None
+    deceased: Optional[UpdateDeceasedRequest] = None
+    death_detail: Optional[UpdateDeathDetailRequest] = None
+    address: Optional[UpdateDeathAddressRequest] = None
+    # Optional: allow clearing/replacing a doc path via this endpoint too
+    deceased_citizenship_front_path: Optional[str] = None
+    deceased_citizenship_back_path: Optional[str] = None
+    informant_citizenship_front_path: Optional[str] = None
+    informant_citizenship_back_path: Optional[str] = None
+    hospital_death_report_path: Optional[str] = None
+    police_report_path: Optional[str] = None
 
 
 class DeathRegistrationResponse(BaseModel):
@@ -297,16 +327,15 @@ class DeathRegistrationResponse(BaseModel):
     address: Optional[DeathAddressResponse] = None
     reject: Optional[List[DeathRejectResponse]] = []
 
+    # ---- documents ----
+    deceased_citizenship_front_path: Optional[str] = None
+    deceased_citizenship_back_path: Optional[str] = None
+    informant_citizenship_front_path: Optional[str] = None
+    informant_citizenship_back_path: Optional[str] = None
+    hospital_death_report_path: Optional[str] = None
+    police_report_path: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
-
-
-class UpdateDeathRegistrationRequest(BaseModel):
-    register_status: Optional[DeathRegistrationStatus] = None
-    registration_no: Optional[str] = None
-    page_no: Optional[str] = None
-    deceased: Optional[UpdateDeceasedRequest] = None
-    death_detail: Optional[UpdateDeathDetailRequest] = None
-    address: Optional[UpdateDeathAddressRequest] = None
 
 
 class DeathRegistrationResponseAll(BaseModel):
@@ -320,5 +349,13 @@ class DeathRegistrationResponseAll(BaseModel):
     informant: Optional[InformantResponse] = None
     address: Optional[DeathAddressResponse] = None
     reject: List[DeathRejectResponse] = []
+
+    # ---- documents ----
+    deceased_citizenship_front_path: Optional[str] = None
+    deceased_citizenship_back_path: Optional[str] = None
+    informant_citizenship_front_path: Optional[str] = None
+    informant_citizenship_back_path: Optional[str] = None
+    hospital_death_report_path: Optional[str] = None
+    police_report_path: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

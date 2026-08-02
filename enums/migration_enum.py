@@ -11,8 +11,9 @@ class MigrationRegistrationStatus(str, enum.Enum):
     DRAFT = "DRAFT"
     SUBMITTED = "SUBMITTED"
     APPROVED = "APPROVED"
+    VERIFIED = "VERIFIED"
+    CERTIFICATE_ISSUED = "CERTIFICATE_ISSUED"
     REJECTED = "REJECTED"
-
 
 class MigrationReasonType(str, enum.Enum):
     EMPLOYMENT = "EMPLOYMENT"       # रोजगारी
@@ -41,3 +42,12 @@ class RelatioshipType(str, enum.Enum):
     GRANDMOTHER = "हजुरआमा"
     GUARDIAN = "अभिभावक"
     OTHER = "अन्य"
+class OccupationType(str, enum.Enum):
+    FARMER = "FARMER"
+    SERVICE = "SERVICE"
+    BUSINESS = "BUSINESS"
+    STUDENT = "STUDENT"
+    LABOUR = "LABOUR"
+    HOUSEWIFE = "HOUSEWIFE"
+    UNEMPLOYED = "UNEMPLOYED"
+    OTHER = "OTHER"

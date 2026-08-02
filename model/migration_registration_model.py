@@ -1,3 +1,4 @@
+# model/migration_registration_model.py
 import uuid
 from sqlalchemy import Column, String, Boolean, Text, ForeignKey, DateTime, Integer
 from sqlalchemy.dialects.postgresql import UUID
@@ -10,7 +11,7 @@ from enums.migration_enum import (
     RelatioshipType,
     MigrationRegistrationStatus,
     MigrationReasonType,
-    MigrationAddressType,
+    MigrationAddressType,OccupationType
 )
 
 
@@ -26,14 +27,19 @@ class MigrationRegistrationModel(Base):
         default=MigrationRegistrationStatus.DRAFT,
     )
 
-    # ── Enclosures (४. संलग्न कागजातहरु) — these are declarations on the
-    # application form, not uploaded files, same reasoning your birth
-    # registration module used to keep DocumentModel commented out.
     enclosure_citizenship_copy = Column(Boolean, nullable=False, default=False)
     enclosure_address_proof = Column(Boolean, nullable=False, default=False)
     enclosure_destination_proof = Column(Boolean, nullable=False, default=False)
     enclosure_photo_count = Column(Integer, nullable=True, default=0)
     enclosure_other = Column(String(200), nullable=True)
+
+    # --- Supporting documents — citizenship has two sides, stored
+    # separately so both stay legible, same pattern as birth/death ---
+    applicant_citizenship_front_path = Column(String, nullable=True)
+    applicant_citizenship_back_path  = Column(String, nullable=True)
+    address_proof_path               = Column(String, nullable=True)
+    destination_proof_path           = Column(String, nullable=True)
+    applicant_photo_path             = Column(String, nullable=True)
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -61,11 +67,11 @@ class MigrationApplicantModel(Base):
     applicant_full_name_np = Column(String(200), nullable=False)
     applicant_full_name_en = Column(String(200), nullable=False)
     applicant_gender = Column(SAEnum(GenderType), nullable=False)
-    applicant_dob_bs = Column(DateTime, nullable=False)
+    applicant_dob_bs = Column(String(10), nullable=False)
     applicant_dob_ad = Column(DateTime, nullable=True)
     applicant_citizenship_no = Column(String(50), nullable=False)
     applicant_nationality = Column(String(100), nullable=False, default="NEPALESE")
-    applicant_occupation = Column(String(100))
+    aapplicant_occupation = Column(SAEnum(OccupationType), nullable=True)
     applicant_contact_no = Column(String(50))
 
     registration = relationship("MigrationRegistrationModel", back_populates="applicant")
@@ -81,8 +87,6 @@ class MigrationAddressModel(Base):
         nullable=False,
     )
 
-    # PERMANENT / CURRENT (at time of leaving) / NEW (migration destination)
-    # — one registration has exactly three rows here, one per type.
     address_type = Column(SAEnum(MigrationAddressType), nullable=False)
 
     province = Column(String(100))
@@ -91,8 +95,16 @@ class MigrationAddressModel(Base):
     ward_number = Column(Integer)
     tole = Column(String(200))
 
-    registration = relationship("MigrationRegistrationModel", back_populates="addresses")
+    # --- Nepali equivalents, captured from the selected ward at fill-time
+    # (same pattern as birth's AddressModel.ward_nepali_*) so the
+    # certificate can render fully in Nepali instead of falling back to
+    # the English strings typed into the cascading selects. ---
+    province_np = Column(String(100), nullable=True)
+    district_np = Column(String(100), nullable=True)
+    municipality_np = Column(String(100), nullable=True)
+    ward_name_np = Column(String(200), nullable=True)
 
+    registration = relationship("MigrationRegistrationModel", back_populates="addresses")
 
 class MigrationDetailModel(Base):
     __tablename__ = "migration_detail"
@@ -105,7 +117,7 @@ class MigrationDetailModel(Base):
         unique=True,
     )
 
-    migration_date_bs = Column(DateTime, nullable=True)
+    migration_date_bs = Column(String(10), nullable=True)
     migration_date_ad = Column(DateTime, nullable=True)
     migration_reason = Column(
         SAEnum(MigrationReasonType), nullable=False, default=MigrationReasonType.OTHER
@@ -129,7 +141,7 @@ class MigrationFamilyMemberModel(Base):
     member_name_en = Column(String(200))
     member_relationship = Column(SAEnum(RelatioshipType), nullable=True)
     member_gender = Column(SAEnum(GenderType), nullable=True)
-    member_dob_bs = Column(DateTime, nullable=True)
+    member_dob_bs = Column(String(10), nullable=True)
     member_dob_ad = Column(DateTime, nullable=True)
     member_citizenship_no = Column(String(50), nullable=True)
     member_remarks = Column(String(200), nullable=True)

@@ -1,0 +1,271 @@
+<!-- templates/recommendation_certificate.html -->
+<!doctype html>
+<html lang="ne">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+      body {
+        font-family: "Noto Sans Devanagari", "Noto Sans", Arial, sans-serif;
+        font-size: 13px;
+        color: #000;
+      }
+      .page {
+        width: 100%;
+        height: 100%;
+        padding: 16mm 18mm;
+        position: relative;
+      }
+
+      /* ── HEADER ── */
+      .header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+      .header-logo {
+        position: absolute;
+        left: 0;
+        z-index: 3;
+      }
+      .header-logo img {
+        width: 90px;
+        height: 90px;
+        object-fit: contain;
+      }
+
+      /* Wraps the heading text + stamp together so the stamp can be
+         positioned relative to this block and sit BEHIND the text —
+         matching the reference letterhead, where the round stamp
+         shows through around/behind "नं वडा कार्यालय" rather than
+         sitting beside it as a separate logo icon. */
+      .header-center-wrap {
+        position: relative;
+        text-align: center;
+      }
+
+      .header-stamp {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1; /* behind the text block below */
+      }
+      .header-stamp img {
+        width: 130px;
+        height: 130px;
+        object-fit: contain;
+        opacity: 0.55;
+      }
+
+      .header-center {
+        position: relative;
+        z-index: 2; /* text renders on top of the stamp */
+      }
+      .header-center .np {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      /* Sized/weighted to match the reference: the ward-office line is
+         the dominant element (largest, boldest), municipality line
+         slightly smaller above it — same hierarchy as image 1. */
+      .header-center .municipality {
+        color: #b3261e;
+        font-weight: 700;
+        font-size: 22px;
+        margin-top: 4px;
+        letter-spacing: 0.2px;
+      }
+      .header-center .office {
+        color: #b3261e;
+        font-weight: 800;
+        font-size: 34px;
+        margin-top: 2px;
+        letter-spacing: 0.2px;
+      }
+      .header-center .sub {
+        font-size: 10.5px;
+        margin-top: 4px;
+        font-weight: 500;
+      }
+
+      .header-rule {
+        border-bottom: 2px solid #8a5a1f;
+        margin-top: 10px;
+      }
+
+      /* ── META ROW: letter no / chalani / date ── */
+      .meta-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        margin-top: 10px;
+      }
+
+      /* ── TO / SUBJECT ── */
+      .to-line {
+        margin-top: 22px;
+        font-size: 13px;
+      }
+      .subject-line {
+        margin-top: 14px;
+        text-align: center;
+        font-weight: bold;
+        font-size: 14px;
+      }
+
+      /* ── BODY ── */
+      .body-text {
+        margin-top: 16px;
+        font-size: 13px;
+        line-height: 1.9;
+        text-align: justify;
+      }
+
+      /* ── SIGNATURE ── */
+      .signature-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-top: 60px;
+        font-size: 12px;
+      }
+      .signature-block {
+        text-align: right;
+      }
+      .signature-line {
+        border-bottom: 1px dotted #000;
+        display: inline-flex;
+        align-items: flex-end;
+        justify-content: flex-end;
+        min-width: 220px;
+        min-height: 80px;
+      }
+      .signature-line img {
+        max-height: 78px;
+        max-width: 210px;
+        object-fit: contain;
+      }
+      .signer-title {
+        font-weight: 600;
+        margin-top: 4px;
+      }
+
+      .footer-note {
+        position: absolute;
+        bottom: 26mm;
+        left: 18mm;
+        right: 34mm;
+        text-align: center;
+        font-size: 9px;
+        color: #555;
+      }
+
+      .qr-box {
+        position: absolute;
+        bottom: 8mm;
+        right: 18mm;
+        text-align: center;
+      }
+      .qr-box img {
+        width: 70px;
+        height: 70px;
+      }
+      .qr-box .cert-no {
+        font-size: 8px;
+        margin-top: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- ── HEADER ── -->
+      <div class="header">
+        <div class="header-logo">
+          <img src="{{ logo_data_uri }}" alt="Nepal Government" />
+        </div>
+
+        <div class="header-center-wrap">
+          {% if stamp_data_uri %}
+          <div class="header-stamp">
+            <img src="{{ stamp_data_uri }}" alt="Ward Stamp" />
+          </div>
+          {% endif %}
+
+          <div class="header-center">
+            <div class="np">नेपाल सरकार</div>
+            <div class="municipality">{{ ward.ward_nepali_municipality }}</div>
+            <div class="office">{{ ward_no_np }} नं वडा कार्यालय</div>
+            <div class="sub">
+              {{ ward.ward_nepali_district }}, {{ ward.ward_nepali_province }},
+              नेपाल
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-rule"></div>
+
+      <!-- ── META ROW ── -->
+      <div class="meta-row">
+        <div>पत्र संख्या : {{ certificate_no }}</div>
+        <div>मिति : {{ issue_date }}</div>
+      </div>
+
+      <!-- ── TO / SUBJECT ── -->
+      <div class="to-line">श्री जो जस सँग सम्बन्ध।</div>
+      <div class="subject-line">विषय :- {{ subject_np }}।</div>
+
+      <!-- ── BODY ── -->
+      <div class="body-text">
+        उपरोक्त सम्बन्धमा यस {{ applicant_address_line }} बस्ने श्री/सुश्री
+        <strong>{{ applicant_name }}</strong> (नागरिकता प्रमाणपत्र नं. {{
+        applicant_citizenship_no }}) {{ clause }} भन्ने व्यहोरा निजको निवेदन र
+        यस वडा कार्यालयमा उपलब्ध अभिलेखको आधारमा प्रमाणित गरी, निजलाई "{{
+        purpose }}" प्रयोजनका लागि यो सिफारिस पत्र यसै वडा कार्यालयबाट जारी
+        गरिएको व्यहोरा अनुरोध साथ जानकारी गराइन्छ।
+      </div>
+
+      <!-- ── SIGNATURE ── -->
+      <div class="signature-row">
+        <div>दर्ता मिति : {{ registration_date }}</div>
+        <div class="signature-block">
+          <div class="signature-line">
+            {% if signer_signature_data_uri %}
+            <img src="{{ signer_signature_data_uri }}" alt="Signature" />
+            {% endif %}
+          </div>
+          <div class="signer-title">
+            {{ signer_name or "" }}<br />
+            {{ signer_designation_np }} / {{ signer_designation_en }}
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        नोट : यस प्रमाणपत्रमा कुनै काटछाँट वा केरमेट गरी परिवर्तन गरेमा कानुन
+        बमोजिम कारबाही हुनेछ।
+      </div>
+
+      <div class="qr-box">
+        <img src="{{ qr_data_uri }}" alt="Verify QR" />
+        <div class="cert-no">{{ certificate_no }}</div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -13,41 +13,31 @@ from schema.ward_schema import MunicipalityType
 class BirthRegistrationModel(Base):
     __tablename__ = "birth_registration"
 
-    registration_id      =          Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    register_ward_id              = Column(UUID(as_uuid=True), ForeignKey("ward.ward_id"), nullable=False)
-    register_submitted_by         = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=False)
-    register_status               = Column(SAEnum(BirthRegistrationStatus), nullable=False, default=BirthRegistrationStatus.DRAFT)
-    created_at = Column(
-        DateTime,
-        server_default=func.now()
-    )
+    registration_id      = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    register_ward_id     = Column(UUID(as_uuid=True), ForeignKey("ward.ward_id"), nullable=False)
+    register_submitted_by = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=False)
+    register_status      = Column(SAEnum(BirthRegistrationStatus), nullable=False, default=BirthRegistrationStatus.DRAFT)
 
-    updated_at = Column(
-        DateTime,
-        server_default=func.now(),
-        onupdate=func.now()
-    )
+    # --- Citizenship docs have two sides — stored separately so both stay legible ---
+    father_citizenship_front_path   = Column(String, nullable=True)
+    father_citizenship_back_path    = Column(String, nullable=True)
+    mother_citizenship_front_path   = Column(String, nullable=True)
+    mother_citizenship_back_path    = Column(String, nullable=True)
 
+    hospital_birth_certificate_path = Column(String, nullable=True)
+    vaccination_card_path            = Column(String, nullable=True)
 
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     ward              = relationship("WardModel", back_populates="birth_registrations")
     submitted_by_user = relationship("UserModel", back_populates="birth_registrations")
     child             = relationship("ChildModel", back_populates="registration", uselist=False)
     parents           = relationship("ParentModel", back_populates="registration")
     nominees          = relationship("NomineeModel", back_populates="registration")
-    certificate = relationship("CertificateModel", back_populates="registration", uselist=False)
-    reject = relationship("RejectModel",back_populates="registration")
-    address = relationship(
-    "AddressModel",
-    back_populates="registration",
-    uselist=False
-)
-
-
-    # informant         = relationship("Informant", back_populates="registration", uselist=False)
-    # documents         = relationship("Document", back_populates="registration")
-    # certificate       = relationship("Certificate", back_populates="registration", uselist=False)
-    # workflow_logs     = relationship("WorkflowLog", back_populates="registration")
+    certificate       = relationship("CertificateModel", back_populates="registration", uselist=False)
+    reject            = relationship("RejectModel", back_populates="registration")
+    address           = relationship("AddressModel", back_populates="registration", uselist=False)
 class RejectModel(Base):
     __tablename__ = "reject"
 

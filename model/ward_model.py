@@ -37,4 +37,15 @@ class WardModel(Base):
     user=relationship("UserModel",back_populates="ward")
     userVerify=relationship("UserVerifyModel",back_populates="wardVerify")
     notice=relationship("NoticeModel", back_populates="ward")
+    recommendation_letters = relationship("RecommendationLetterModel", back_populates="ward")
+    complaints=relationship("ComplaintModel",back_populates="ward")
+    tax_rates         = relationship("WardTaxRateModel", back_populates="ward")
+
+    property_records  = relationship("PropertyRecordModel", back_populates="ward")
+
+    business_records   = relationship("BusinessRecordModel", back_populates="ward")
+
+
+
+
 

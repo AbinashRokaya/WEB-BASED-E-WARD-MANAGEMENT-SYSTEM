@@ -2,7 +2,9 @@ from fastapi import FastAPI
 import uvicorn
 from database.db import Base, engine
 from route import (user_route,admin_route,birth_registration_route, ward_route,ward_secretary_route,ward_chairperson_route,citizen_route,notice_route,certificate_router,
-                   deat_registration_route,migration_registration_route)
+                   deat_registration_route,migration_registration_route,recommendation_router,complaint_route,data_validation_route,analytics_router,
+                   tax_router)
+
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -42,6 +44,12 @@ app.include_router(ward_route.router)
 app.include_router(certificate_router.router)
 app.include_router(deat_registration_route.router)
 app.include_router(migration_registration_route.router)
+app.include_router(recommendation_router.router)
+app.include_router(complaint_route.router)
+app.include_router(data_validation_route.router)
+app.include_router(analytics_router.router)
+app.include_router(tax_router.router)
+
 
 if __name__=="__main__":
     uvicorn.run("main:app",host="localhost",port=8000,reload=True)

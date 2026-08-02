@@ -59,37 +59,76 @@
         text-align: center;
         background: #fdeee0;
       }
+
+      /* ── HEADER — logo left, text center, no image on the right anymore.
+         The single stamp now lives as a centered watermark (below), so the
+         header itself no longer reserves a right-hand image slot. Equal
+         fixed-width side columns keep the center block truly centered. ── */
       .header {
-        display: flex;
+        display: grid;
+        grid-template-columns: 150px 1fr 150px;
         align-items: flex-start;
-        justify-content: space-between;
         margin-bottom: 2px;
       }
+      .header-logo {
+        display: flex;
+        justify-content: flex-start;
+      }
       .header-logo img {
-        width: 135px;
-        height: 135px;
+        width: 110px;
+        height: 110px;
         object-fit: contain;
       }
       .header-center {
         text-align: center;
-        flex: 1;
         padding: 0 10px;
       }
-      .stamp-box {
-        padding: 4px 8px;
-        min-width: 150px;
-        min-height: 110px;
-        font-size: 10px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
+      .header-center .np-title {
+        font-weight: bold;
+        font-size: 17px;
+        color: #b3261e;
       }
-      .stamp-box img {
-        max-width: 145px;
-        max-height: 110px;
+      .header-center .np-sub {
+        font-weight: 600;
+        font-size: 13px;
+        color: #b3261e;
+      }
+      .header-center .en-title {
+        font-weight: bold;
+        font-size: 12px;
+        margin-top: 4px;
+      }
+
+      /* ── STAMP WATERMARK — the single stamp, centered behind the heading,
+         faded and grayscale so it reads as an official watermark rather
+         than a second logo competing with the ward seal. ── */
+      .stamp-watermark {
+        position: absolute;
+        top: 6mm;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 140px;
+        height: 140px;
+        opacity: 0.16;
+        filter: grayscale(100%);
+        z-index: 0;
+        pointer-events: none;
+      }
+      .stamp-watermark img {
+        width: 100%;
+        height: 100%;
         object-fit: contain;
       }
+      .header,
+      .title,
+      .meta-row,
+      table,
+      .signature-row,
+      .qr-box {
+        position: relative;
+        z-index: 1;
+      }
+
       .title {
         text-align: center;
         margin: 4px 0 6px;
@@ -97,6 +136,7 @@
       .title .h1 {
         font-weight: bold;
         font-size: 20px;
+        color: #b3261e;
       }
       .title .h2 {
         font-weight: bold;
@@ -115,11 +155,6 @@
         margin-top: 12px;
         font-size: 11px;
       }
-      /* Signature line: was capping the image at 22px tall, which is why
-         the chairperson's signature rendered as a barely-visible scribble.
-         Bumped the box up to hold a properly sized signature image, and
-         kept the dotted underline anchored to the bottom so it still reads
-         as a signature line rather than a floating image. */
       .signature-line {
         border-bottom: 1px dotted #000;
         display: inline-flex;
@@ -151,17 +186,22 @@
   </head>
   <body>
     <div class="page">
+      <!-- ── STAMP WATERMARK — the ONE stamp on the page, behind the heading ── -->
+      {% if chairperson_stamp_data_uri %}
+      <div class="stamp-watermark">
+        <img src="{{ chairperson_stamp_data_uri }}" alt="" />
+      </div>
+      {% endif %}
+
       <!-- ── HEADER ── -->
       <div class="header">
         <div class="header-logo">
           <img src="{{ logo_data_uri }}" alt="Nepal Government" />
         </div>
         <div class="header-center">
-          <div style="font-weight: bold; font-size: 17px">नेपाल सरकार</div>
-          <div style="font-weight: 600; font-size: 13px">स्थानीय तह</div>
-          <div style="font-weight: 600; font-size: 13px">
-            स्थानीय पञ्जिकाधिकारीको कार्यालय
-          </div>
+          <div class="np-title">नेपाल सरकार</div>
+          <div class="np-sub">स्थानीय तह</div>
+          <div class="np-sub">स्थानीय पञ्जिकाधिकारीको कार्यालय</div>
           <div style="font-size: 11px; margin-top: 3px">
             वडा नं. {{ ward_no_np }}, {{ ward.ward_nepali_municipality }} {{
             ward_type_np }}
@@ -170,9 +210,7 @@
             {{ ward.ward_nepali_district }} जिल्ला, {{ ward.ward_nepali_province
             }} प्रदेश
           </div>
-          <div style="font-weight: bold; font-size: 12px; margin-top: 4px">
-            Government of Nepal
-          </div>
+          <div class="en-title">Government of Nepal</div>
           <div style="font-size: 11px">Office of the Local Registrar</div>
           <div style="font-size: 10px; margin-top: 1px">
             Ward No. {{ ward.ward_no }}, {{ ward.ward_municipality }} {{
@@ -182,11 +220,10 @@
             {{ ward.ward_district }} District, {{ ward.ward_province }} Province
           </div>
         </div>
-        <div class="stamp-box">
-          {% if ward_logo_data_uri %}
-          <img src="{{ ward_logo_data_uri }}" alt="Ward Logo" />
-          {% else %} वडाको लोगो<br />(Ward Logo) {% endif %}
-        </div>
+        <div></div>
+        <!-- empty right column keeps the grid's 3-column centering; the
+             ward-logo box that used to sit here is gone, since the
+             chairperson stamp above is now the certificate's only stamp. -->
       </div>
 
       <hr style="border: none; border-top: 1.5px solid #000; margin: 4px 0" />
@@ -370,7 +407,8 @@
         </tr>
       </table>
 
-      <!-- ── SIGNATURE ── -->
+      <!-- ── SIGNATURE (no stamp box here — the single stamp is the header
+           watermark above) ── -->
       <div class="signature-row">
         <div style="flex: 1">
           <div style="margin-bottom: 8px">
@@ -397,11 +435,6 @@
               >{{ registrar_designation or "" }}</span
             >
           </div>
-        </div>
-        <div class="stamp-box" style="margin-left: 20px; min-height: 110px">
-          {% if chairperson_stamp_data_uri %}
-          <img src="{{ chairperson_stamp_data_uri }}" alt="Official Stamp" />
-          {% else %} कार्यालयको छाप<br />(Official Stamp) {% endif %}
         </div>
       </div>
 
