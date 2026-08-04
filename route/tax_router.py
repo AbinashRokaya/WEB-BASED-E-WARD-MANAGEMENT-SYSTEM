@@ -1,5 +1,6 @@
 import os
 import shutil
+import logging
 import uuid as uuid_lib
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -7,6 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.concurrency import run_in_threadpool
 
 from database.db import get_db
 from model.tax_model import (
@@ -37,9 +39,11 @@ from services.tax_assessment_service import (
     generate_business_assessment, apply_overdue_penalty,
     auto_assess_property, auto_assess_business, auto_assess_rental,
 )
+from services.tax_receipt_service import issue_tax_receipt
 from auth.current_user import require_permission
 
 router = APIRouter(prefix="/v1/tax", tags=["tax"])
+logger = logging.getLogger(__name__)
 
 
 def serialize(obj, schema):
@@ -48,16 +52,8 @@ def serialize(obj, schema):
 
 # ══════════════════════════════════════════════════════════════
 # WARD SECRETARY — rate configuration, scoped to their own ward.
-# Reuses the same ward-scope pattern as birth_registration_router's
-# _get_user_ward_or_404: a Secretary can only touch WardTaxRateModel
-# rows for current_user.user_ward_id, never another ward's.
 # ══════════════════════════════════════════════════════════════
 def _assert_ward_scope(current_user, ward_id: UUID):
-    """Still used by the /wards/{ward_id}/rates endpoints, which take
-    ward_id from the URL path (a Ward Secretary manages one ward's rates
-    at a time, and Admin needs to be able to target any ward there).
-    Property/business/import endpoints below don't take a client-supplied
-    ward_id at all anymore — ward is always current_user.user_ward_id."""
     is_admin = str(getattr(current_user, "user_role", "")).upper().endswith("ADMIN")
     if is_admin:
         return
@@ -66,10 +62,6 @@ def _assert_ward_scope(current_user, ward_id: UUID):
 
 
 def _match_citizen_for_own_ward(db, current_user, phone_number: str):
-    """Resolves a phone number to a citizen, and requires that citizen be
-    registered under the SAME ward as the officer entering the data —
-    ward is taken from current_user.user_ward_id, never from client input,
-    so there's nothing for a DVO to spoof here."""
     from model.user_model import UserModel
     citizen = db.query(UserModel).filter(UserModel.user_phone_number == phone_number).first()
     if not citizen:
@@ -92,10 +84,6 @@ def get_my_ward_tax_rates(
     db=Depends(get_db),
     current_user=Depends(require_permission("read_user")),
 ):
-    """Ward Secretary's own rate list — no ward_id in the request at all,
-    always current_user.user_ward_id. Use this from the Secretary's own
-    screen; the /wards/{ward_id}/rates endpoints above remain for an
-    Admin who needs to look at/manage a specific ward from elsewhere."""
     query = db.query(WardTaxRateModel).filter(
         WardTaxRateModel.ward_id == current_user.user_ward_id
     )
@@ -177,14 +165,6 @@ def recalculate_ward_assessments(
     db=Depends(get_db),
     current_user=Depends(require_permission("update_user")),
 ):
-    """Catches up any property/business/rental record that was entered
-    (single-entry or Excel import) before a matching rate existed, or
-    before the rate that now applies to it was set — auto_assess_* is a
-    no-op at entry time if no rate matches yet, so nothing retroactively
-    fills in the assessment once one is added. Call this after adding or
-    editing a rate to backfill anything that's still unassessed. Already-
-    paid assessments are untouched (auto_assess_* upserts, never rewrites
-    a PAID one)."""
     ward_id = current_user.user_ward_id
 
     assessed_count = 0
@@ -307,13 +287,7 @@ def update_ward_tax_rate(
 
 
 # ══════════════════════════════════════════════════════════════
-# EXCEL IMPORT — DVO uploads survey sheet, reviews staged rows, commits.
-# ══════════════════════════════════════════════════════════════
-# ══════════════════════════════════════════════════════════════
-# PROPERTY / BUSINESS RECORDS — direct single-entry by DVO (the
-# Excel import further below is the bulk path for the same tables).
-# ward_id is NEVER read from the client — always current_user.user_ward_id,
-# same principle as birth_registration_router's _get_user_ward_or_404.
+# PROPERTY / BUSINESS RECORDS — direct single-entry by DVO
 # ══════════════════════════════════════════════════════════════
 @router.get("/properties")
 def list_property_records(
@@ -353,7 +327,7 @@ def create_property_record(
     db.add(record)
     db.commit()
     db.refresh(record)
-    auto_assess_property(db, record)  # calculates & stores the bill automatically, using the ward's latest rate
+    auto_assess_property(db, record)
 
     return JSONResponse(
         status_code=201,
@@ -384,7 +358,7 @@ def update_property_record(
     record.entered_by = current_user.user_id
     db.commit()
     db.refresh(record)
-    auto_assess_property(db, record)  # recalculates if a bill already exists (forward-only — paid bills untouched)
+    auto_assess_property(db, record)
 
     return JSONResponse(
         status_code=200,
@@ -497,8 +471,7 @@ def update_business_record(
 
 
 # ══════════════════════════════════════════════════════════════
-# EXCEL IMPORT — DVO uploads survey sheet, reviews staged rows, commits.
-# ward is always current_user.user_ward_id — never accepted from the client.
+# EXCEL IMPORT
 # ══════════════════════════════════════════════════════════════
 IMPORT_UPLOAD_DIR = "static/tax_imports"
 os.makedirs(IMPORT_UPLOAD_DIR, exist_ok=True)
@@ -581,8 +554,6 @@ def edit_import_row(
         row.raw_data = {**row.raw_data, **request.raw_data}
     if request.phone_number is not None:
         row.phone_number = request.phone_number
-        # re-check citizen match after a phone correction — must be both
-        # registered AND under this batch's ward, same rule as initial import
         from model.user_model import UserModel
         from enums.tax_enums import ImportRowMatchStatus
         citizen = db.query(UserModel).filter(UserModel.user_phone_number == request.phone_number).first()
@@ -621,13 +592,6 @@ def approve_all_matched_rows(
     db=Depends(get_db),
     current_user=Depends(require_permission("validate_data")),
 ):
-    """Bulk version of the per-row Approve button — approves every row
-    that's PENDING and cleanly MATCHED in one call, so the DVO doesn't
-    have to click through hundreds of rows one at a time. Rows that need
-    a human decision (NOT_REGISTERED, WARD_MISMATCH, DUPLICATE_IN_BATCH,
-    INVALID_DATA) are left untouched — this only auto-approves the ones
-    that already passed every check cleanly. Individual Approve/Reject
-    per row still works after this, for anything you want to override."""
     batch = db.query(TaxImportBatchModel).filter(TaxImportBatchModel.id == batch_id).first()
     if not batch:
         raise HTTPException(status_code=404, detail="Import batch not found")
@@ -692,8 +656,7 @@ def commit_import_batch(
 
 
 # ══════════════════════════════════════════════════════════════
-# ASSESSMENTS — generate from a committed record, list for a citizen,
-# and a ward-wide payments view for staff.
+# ASSESSMENTS
 # ══════════════════════════════════════════════════════════════
 @router.post("/assessments/property/{property_id}")
 def generate_property_tax(
@@ -733,7 +696,6 @@ def get_my_assessments(
     assessments = db.query(TaxAssessmentModel).filter(
         TaxAssessmentModel.citizen_id == current_user.user_id
     ).all()
-    # apply overdue penalty lazily on read, same as discussed
     assessments = [apply_overdue_penalty(db, a) for a in assessments]
 
     return JSONResponse(
@@ -755,14 +717,6 @@ def list_ward_assessments(
     db=Depends(get_db),
     current_user=Depends(require_permission("read_user")),
 ):
-    """Every assessment (bill) issued in this ward, with live payment
-    status — this is what the DVO's property/business tables never
-    showed. Those only ever reflect TaxRecordStatus (whether the survey
-    record itself was reviewed: ASSESSED/DISPUTED/CORRECTED), which is a
-    completely different field from TaxAssessmentStatus here
-    (ASSESSED/PAID/OVERDUE/DISPUTED — whether the citizen has actually
-    paid). Scoped to current_user.user_ward_id, same as every other
-    tax endpoint — never accepts ward_id from the client."""
     query = db.query(TaxAssessmentModel).filter(
         TaxAssessmentModel.ward_id == current_user.user_ward_id
     )
@@ -772,9 +726,6 @@ def list_ward_assessments(
         query = query.filter(TaxAssessmentModel.status == status)
 
     assessments = query.order_by(TaxAssessmentModel.created_at.desc()).all()
-    # apply overdue penalty lazily on read, same as get_my_assessments —
-    # so an assessment shows OVERDUE/updated total_due here even if no
-    # citizen has viewed their own dashboard since the due date passed.
     assessments = [apply_overdue_penalty(db, a) for a in assessments]
 
     return JSONResponse(
@@ -790,7 +741,21 @@ def list_ward_assessments(
 
 
 # ══════════════════════════════════════════════════════════════
-# PAYMENTS
+# PAYMENTS — receipt PDF is issued the instant an assessment goes PAID,
+# both here (manual/CASH) and in the Khalti callback below.
+#
+# FIX: issue_tax_receipt() uses Playwright's *sync* API internally
+# (sync_playwright()). Playwright's sync API raises if it detects a
+# running asyncio event loop in the current thread. record_tax_payment
+# below is a plain `def` route, so FastAPI runs it in a threadpool with
+# no event loop — issue_tax_receipt() works fine there. But the Khalti
+# callback (verify_khalti_tax_payment) is `async def`, which DOES run
+# on the event loop — so calling issue_tax_receipt() directly there
+# always raised, silently, *after* assessment.status was already
+# committed as PAID. That's why paid assessments were stuck with
+# pdf_path = NULL forever. Fix: push it to a thread with
+# run_in_threadpool, and never let a receipt-generation failure take
+# down the payment flow itself (wrap in try/except + log).
 # ══════════════════════════════════════════════════════════════
 @router.post("/payments")
 def record_tax_payment(
@@ -827,6 +792,15 @@ def record_tax_payment(
     db.commit()
     db.refresh(payment)
 
+    if assessment.status == TaxAssessmentStatus.PAID:
+        # This route is sync (runs in a threadpool) so sync_playwright()
+        # is safe here — but still guard it so a rendering/logo/stamp
+        # problem never turns a successful payment into a 500.
+        try:
+            issue_tax_receipt(db, payment, issued_by_user_id=current_user.user_id)
+        except Exception:
+            logger.exception("Failed to issue tax receipt for payment %s", payment.id)
+
     return JSONResponse(
         status_code=201,
         content={
@@ -844,17 +818,6 @@ async def initiate_khalti_tax_payment(
     db=Depends(get_db),
     current_user=Depends(require_permission("read_user")),
 ):
-    """Starts a Khalti gateway payment for the citizen's own assessment.
-    customer_info sent to Khalti is built ENTIRELY from the citizen's own
-    UserModel row — name, email, phone all come from their account,
-    never from anything the client could send in the request body.
-    current_user is a TokenData object (decoded from the JWT) and only
-    carries a few identity fields (user_id, user_role, user_ward_id) —
-    it does NOT carry profile fields like name/email/phone, so the full
-    UserModel row is fetched separately below before building
-    customer_info. There's no legitimate case for paying a tax bill
-    under someone else's name/phone, so there's nothing here for the
-    client to override."""
     assessment = db.query(TaxAssessmentModel).filter(
         TaxAssessmentModel.id == request.assessment_id
     ).first()
@@ -914,12 +877,8 @@ async def initiate_khalti_tax_payment(
     )
 
 
-# Public — no auth dependency. This is exactly what Khalti's browser
-# redirect calls back on after the citizen completes (or cancels)
-# payment on Khalti's hosted page, same as birth-certificate
-# verification being a public QR-linked endpoint elsewhere in this
-# project — the pidx itself is the only thing that identifies which
-# payment this is, and it's unguessable, so no auth is needed here.
+# Public — no auth. Khalti's browser redirect calls back on this after
+# the citizen completes (or cancels) payment on Khalti's hosted page.
 @router.get("/payments/khalti/verify")
 async def verify_khalti_tax_payment(pidx: str, db=Depends(get_db)):
     payment = db.query(TaxPaymentModel).filter(TaxPaymentModel.pidx == pidx).first()
@@ -943,14 +902,125 @@ async def verify_khalti_tax_payment(pidx: str, db=Depends(get_db)):
         if assessment and assessment.status != TaxAssessmentStatus.PAID:
             assessment.status = TaxAssessmentStatus.PAID
         db.commit()
-        return RedirectResponse(f"{FRONTEND_BASE_URL}/?tax_payment=success")
+        db.refresh(payment)
+
+        # FIX: this route is `async def`, which runs on the event loop.
+        # issue_tax_receipt() calls Playwright's sync_playwright() API,
+        # which raises immediately if an event loop is already running
+        # in this thread. Calling it directly here (the old code) meant
+        # this line always threw — after the PAID commit above had
+        # already gone through — leaving pdf_path permanently NULL and
+        # also breaking this function's own redirect. run_in_threadpool
+        # runs it in a worker thread with no event loop, where the sync
+        # Playwright API works exactly like it does in the CASH path.
+        # Idempotent — safe even if Khalti's callback fires more than once.
+        try:
+            await run_in_threadpool(issue_tax_receipt, db, payment)
+        except Exception:
+            logger.exception("Failed to issue tax receipt for payment %s", payment.id)
+
+        # FIX: pass payment_id back through the redirect so the frontend
+        # knows *which* payment just completed and can fetch + auto-open
+        # its receipt immediately — mirrors how the birth-certificate flow
+        # hands the citizen their PDF the instant it's issued, instead of
+        # just showing a toast and making them hunt for a "View Receipt"
+        # button in a list further down the page.
+        return RedirectResponse(
+            f"{FRONTEND_BASE_URL}/?tax_payment=success&payment_id={payment.id}"
+        )
 
     db.commit()
     return RedirectResponse(f"{FRONTEND_BASE_URL}/?tax_payment=failed&reason={status}")
 
 
+@router.get("/payments/{payment_id}/receipt")
+def get_tax_payment_receipt(
+    payment_id: UUID,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("read_user")),
+):
+    """
+    Returns the payment row including qr_path/pdf_path/receipt_issued_at
+    so the frontend can render a "Download Receipt" button. Restricted to
+    the citizen who paid, staff of that assessment's ward, or an Admin —
+    same three-way check pattern used elsewhere in this router, just
+    applied to a payment instead of a property/business record.
+
+    FIX: added a lazy fallback. If an older payment is stuck with
+    pdf_path = NULL (e.g. from the Khalti bug above, before this file
+    was patched), retry generation on-demand here — this route is a
+    plain `def`, so it runs in a threadpool and sync_playwright() is
+    safe to call directly, no run_in_threadpool needed.
+    """
+    payment = db.query(TaxPaymentModel).filter(TaxPaymentModel.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    assessment = db.query(TaxAssessmentModel).filter(
+        TaxAssessmentModel.id == payment.assessment_id
+    ).first()
+    is_admin = str(getattr(current_user, "user_role", "")).upper().endswith("ADMIN")
+    is_owner = assessment and assessment.citizen_id == current_user.user_id
+    is_ward_staff = assessment and str(assessment.ward_id) == str(current_user.user_ward_id)
+    if not (is_admin or is_owner or is_ward_staff):
+        raise HTTPException(status_code=403, detail="You don't have access to this receipt")
+
+    if not payment.pdf_path and assessment and assessment.status == TaxAssessmentStatus.PAID:
+        try:
+            payment = issue_tax_receipt(db, payment, issued_by_user_id=current_user.user_id)
+        except Exception:
+            logger.exception("Retry receipt issuance failed for payment %s", payment.id)
+
+    if not payment.pdf_path:
+        raise HTTPException(status_code=400, detail="Receipt not issued yet for this payment")
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "status_code": 200,
+            "message": "Receipt fetched successfully",
+            "data": serialize(payment, TaxPaymentResponse),
+        },
+    )
+
+
+# Public — no auth, same reasoning as the birth-certificate QR verify
+# endpoint: payment_id is the only lookup key and it's unguessable, so
+# this is safe to expose without login. Response deliberately excludes
+# phone/citizenship numbers — only what's printed on the receipt itself.
+@router.get("/receipts/verify/{payment_id}")
+def verify_tax_receipt(payment_id: UUID, db=Depends(get_db)):
+    payment = db.query(TaxPaymentModel).filter(TaxPaymentModel.id == payment_id).first()
+    if not payment or not payment.pdf_path:
+        raise HTTPException(status_code=404, detail="Receipt not found")
+
+    assessment = db.query(TaxAssessmentModel).filter(
+        TaxAssessmentModel.id == payment.assessment_id
+    ).first()
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "success": True,
+            "status_code": 200,
+            "message": "Receipt is valid",
+            "data": {
+                "receipt_no": payment.receipt_no,
+                "amount_paid": float(payment.amount_paid),
+                "method": payment.method.value,
+                "paid_at": payment.paid_at.isoformat() if payment.paid_at else None,
+                "tax_type": assessment.tax_type.value if assessment else None,
+                "fiscal_year": assessment.fiscal_year if assessment else None,
+                "citizen_name": assessment.citizen_name if assessment else None,
+                "data_hash": payment.data_hash,
+            },
+        },
+    )
+
+
 # ══════════════════════════════════════════════════════════════
-# DISPUTES — citizen raises, DVO/officer resolves
+# DISPUTES
 # ══════════════════════════════════════════════════════════════
 @router.post("/assessments/{assessment_id}/dispute")
 def raise_dispute(

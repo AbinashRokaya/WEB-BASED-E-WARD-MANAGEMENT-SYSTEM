@@ -10,7 +10,7 @@ from enums.tax_enums import (
 )
 
 
-# ══════════════════════ DIRECT ENTRY (DVO adds one record at a time) ══════════════════════
+# ══════════════════════ DIRECT ENTRY ══════════════════════
 class PropertyRecordCreateRequest(BaseModel):
     phone_number: str
     lalpurja_number: Optional[str] = None
@@ -132,24 +132,8 @@ class TaxDisputeResolveRequest(BaseModel):
     resolution_note: Optional[str] = None
 
 
-# ══════════════════════ ASSESSMENT / PAYMENT ══════════════════════
-class TaxAssessmentResponse(BaseModel):
-    id: UUID
-    record_id: UUID
-    tax_type: TaxType
-    citizen_id: int
-    citizen_name: Optional[str] = None
-    ward_id: UUID
-    fiscal_year: str
-    base_amount: float
-    penalty_amount: float
-    discount_amount: float
-    total_due: float
-    due_date: datetime
-    status: TaxAssessmentStatus
-    model_config = ConfigDict(from_attributes=True)
-
-
+# ══════════════════════ PAYMENT (defined before TaxAssessmentResponse so it
+# can be nested as the `receipt` field below) ══════════════════════
 class TaxPaymentRequest(BaseModel):
     assessment_id: UUID
     amount_paid: float
@@ -165,6 +149,33 @@ class TaxPaymentResponse(BaseModel):
     paid_at: datetime
     gateway_status: Optional[str] = None
     transaction_id: Optional[str] = None
+    # Receipt PDF fields — null until issue_tax_receipt runs for this payment
+    qr_path: Optional[str] = None
+    pdf_path: Optional[str] = None
+    receipt_issued_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ══════════════════════ ASSESSMENT ══════════════════════
+class TaxAssessmentResponse(BaseModel):
+    id: UUID
+    record_id: UUID
+    tax_type: TaxType
+    citizen_id: int
+    citizen_name: Optional[str] = None
+    ward_id: UUID
+    fiscal_year: str
+    base_amount: float
+    penalty_amount: float
+    discount_amount: float
+    total_due: float
+    due_date: datetime
+    status: TaxAssessmentStatus
+    # Populated from TaxAssessmentModel.receipt — the payment that has an
+    # issued PDF for this assessment (None until paid & receipt generated).
+    # Lets the frontend show a "Download Receipt" link straight off
+    # /assessments/my without a second round-trip to /payments/{id}/receipt.
+    receipt: Optional[TaxPaymentResponse] = None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -205,8 +216,6 @@ class TaxImportBatchResponse(BaseModel):
 
 
 class TaxImportRowEditRequest(BaseModel):
-    """DVO correction to one staged row before commit — only the fields
-    that need fixing (e.g. mis-typed phone number) need to be sent."""
     raw_data: Optional[dict] = None
     phone_number: Optional[str] = None
-    status: Optional[TaxImportRowStatus] = None  # e.g. approve / reject this row
+    status: Optional[TaxImportRowStatus] = None
