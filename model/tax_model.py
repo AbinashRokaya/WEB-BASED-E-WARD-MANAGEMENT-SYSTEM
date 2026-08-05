@@ -28,17 +28,13 @@ class WardTaxRateModel(Base):
     ward_id       = Column(UUID(as_uuid=True), ForeignKey("ward.ward_id", ondelete="CASCADE"), nullable=False)
     tax_type      = Column(SAEnum(TaxType), nullable=False)
 
-    # Only the columns relevant to a given tax_type are populated —
-    # e.g. property_type/construction_type for PROPERTY,
-    # scale_tier for BUSINESS. Left null otherwise.
     property_type      = Column(SAEnum(PropertyType), nullable=True)
     construction_type   = Column(SAEnum(ConstructionType), nullable=True)
     location_zone       = Column(SAEnum(LocationZone), nullable=True)
     business_scale_tier = Column(SAEnum(BusinessScaleTier), nullable=True)
 
-    # PROPERTY: rate per sqm. HOUSE_RENT / BUSINESS: percentage (e.g. 12.5 = 12.5%)
     rate_value      = Column(Numeric(10, 4), nullable=False)
-    fiscal_year     = Column(String(10), nullable=False)          # e.g. "2082/83"
+    fiscal_year     = Column(String(10), nullable=False)
     effective_from  = Column(DateTime, server_default=func.now(), nullable=False)
 
     updated_by = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
@@ -50,8 +46,7 @@ class WardTaxRateModel(Base):
 
 
 # ══════════════════════════════════════════════════════════════
-# PROPERTY / BUSINESS / RENTAL — entered by survey team / DVO,
-# never by citizen self-declaration.
+# PROPERTY / BUSINESS / RENTAL
 # ══════════════════════════════════════════════════════════════
 class PropertyRecordModel(Base):
     __tablename__ = "property_record"
@@ -60,9 +55,6 @@ class PropertyRecordModel(Base):
     citizen_id       = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
     ward_id          = Column(UUID(as_uuid=True), ForeignKey("ward.ward_id"), nullable=False)
 
-    # Natural key from the physical survey — stable across years, used to
-    # recognize "same property" on next year's re-survey import. Nullable
-    # since some older properties may lack formal registration yet.
     lalpurja_number  = Column(String(100), nullable=True, unique=True)
 
     land_area_sqm      = Column(Numeric(10, 2), nullable=False)
@@ -86,20 +78,9 @@ class PropertyRecordModel(Base):
     entered_by_user = relationship("UserModel", foreign_keys=[entered_by], back_populates="property_records_entered")
     ward         = relationship("WardModel", back_populates="property_records")
     rental_units = relationship("RentalUnitModel", back_populates="property")
-    # NOTE: no `assessments` relationship here — record_id on
-    # TaxAssessmentModel is not a real ForeignKey (it points at
-    # property_record.id, business_record.id, or rental_unit.id
-    # depending on tax_type, so it can't be one column with one FK).
-    # Query TaxAssessmentModel directly instead, e.g.:
-    #   db.query(TaxAssessmentModel).filter(
-    #       TaxAssessmentModel.record_id == property_record.id,
-    #       TaxAssessmentModel.tax_type == TaxType.PROPERTY,
-    #   )
 
 
 class BusinessCategoryModel(Base):
-    """Admin-managed reference table — e.g. 'Retail shop', 'Restaurant'.
-    Keeps category fees/tiers in one place instead of hardcoding them."""
     __tablename__ = "business_category"
 
     id       = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -121,7 +102,7 @@ class BusinessRecordModel(Base):
     business_name       = Column(String(200), nullable=False)
     category_id         = Column(UUID(as_uuid=True), ForeignKey("business_category.id"), nullable=False)
     scale_tier          = Column(SAEnum(BusinessScaleTier), nullable=False, default=BusinessScaleTier.SMALL)
-    registration_number = Column(String(100), nullable=True, unique=True)  # Office of Company Registrar no.
+    registration_number = Column(String(100), nullable=True, unique=True)
 
     entered_by      = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=False)
     survey_date     = Column(DateTime, nullable=False, server_default=func.now())
@@ -140,8 +121,6 @@ class BusinessRecordModel(Base):
 
 
 class RentalUnitModel(Base):
-    """A single rented unit within a property. One property can have
-    several — a landlord renting out 3 rooms is 3 rows here."""
     __tablename__ = "rental_unit"
 
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -150,7 +129,7 @@ class RentalUnitModel(Base):
     unit_type         = Column(SAEnum(RentalUnitType), nullable=False)
     number_of_rooms   = Column(Integer, nullable=True)
     monthly_rent      = Column(Numeric(10, 2), nullable=False)
-    is_active         = Column(Boolean, nullable=False, default=True)  # False = currently vacant
+    is_active         = Column(Boolean, nullable=False, default=True)
 
     entered_by  = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=False)
     survey_date = Column(DateTime, nullable=False, server_default=func.now())
@@ -162,9 +141,7 @@ class RentalUnitModel(Base):
 
 
 # ══════════════════════════════════════════════════════════════
-# EXCEL IMPORT PIPELINE — rows land in staging (tax_import_row)
-# first; nothing touches property_record/business_record/rental_unit
-# until the DVO reviews and commits.
+# EXCEL IMPORT PIPELINE
 # ══════════════════════════════════════════════════════════════
 class TaxImportBatchModel(Base):
     __tablename__ = "tax_import_batch"
@@ -189,9 +166,9 @@ class TaxImportRowModel(Base):
 
     id       = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     batch_id = Column(UUID(as_uuid=True), ForeignKey("tax_import_batch.id", ondelete="CASCADE"), nullable=False)
-    row_number = Column(Integer, nullable=False)  # original Excel row, for error messages
+    row_number = Column(Integer, nullable=False)
 
-    raw_data = Column(JSON, nullable=False)  # full parsed row, kept for audit
+    raw_data = Column(JSON, nullable=False)
     phone_number = Column(String(20), nullable=True)
 
     matched_citizen_id  = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
@@ -212,25 +189,18 @@ class TaxImportRowModel(Base):
 
     @property
     def matched_citizen_name(self):
-        """The citizen's actual registered name, looked up via
-        matched_citizen_id — not whatever the survey team typed into the
-        Excel sheet. Used by the DVO review screen instead of a
-        name field trusted from the file."""
         if self.matched_citizen:
             return self.matched_citizen.user_nepali_name or self.matched_citizen.user_name
         return None
 
 
 # ══════════════════════════════════════════════════════════════
-# ASSESSMENT / PAYMENT / DISPUTE
+# ASSESSMENT / PAYMENT / RECEIPT / DISPUTE
 # ══════════════════════════════════════════════════════════════
 class TaxAssessmentModel(Base):
     __tablename__ = "tax_assessment"
 
     id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    # record_id points at property_record.id, business_record.id, or
-    # rental_unit.id depending on tax_type — kept generic (no FK
-    # constraint) since it can reference three different tables.
     record_id   = Column(UUID(as_uuid=True), nullable=False, index=True)
     tax_type    = Column(SAEnum(TaxType), nullable=False)
     citizen_id  = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=False)
@@ -259,13 +229,30 @@ class TaxAssessmentModel(Base):
 
     @property
     def citizen_name(self):
-        """The citizen's actual registered name — same pattern as
-        TaxImportRowModel.matched_citizen_name above. Used by the
-        ward-wide payments view (GET /v1/tax/assessments/ward) so staff
-        see who owes/paid without a separate lookup."""
         if self.citizen:
             return self.citizen.user_nepali_name or self.citizen.user_name
         return None
+
+    @property
+    def receipt(self):
+        """
+        The payment that actually settled this assessment, if any — used
+        by TaxAssessmentResponse.receipt so the frontend can show a
+        "Download Receipt" link straight off /assessments/my without a
+        second round-trip. An assessment can have more than one
+        TaxPaymentModel row (e.g. an abandoned/failed Khalti attempt
+        followed by a successful one), so this picks the one that
+        actually covered total_due and — for KHALTI — was confirmed
+        Completed by the gateway, same rule the backfill script uses.
+        """
+        candidates = [
+            p for p in self.payments
+            if p.amount_paid is not None and p.amount_paid >= self.total_due
+            and (p.method != TaxPaymentMethod.KHALTI or p.gateway_status == "Completed")
+        ]
+        if not candidates:
+            return None
+        return sorted(candidates, key=lambda p: p.paid_at or 0)[-1]
 
 
 class TaxPaymentModel(Base):
@@ -279,17 +266,83 @@ class TaxPaymentModel(Base):
     paid_at       = Column(DateTime, server_default=func.now())
     recorded_by   = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
 
-    # Khalti gateway tracking — only populated for method=KHALTI. A gateway
-    # payment isn't instantly "paid" the way a staff-recorded CASH entry
-    # is: it starts Pending at initiate, and only becomes Completed once
-    # Khalti's callback/lookup confirms it, so these fields exist to track
-    # that in-between state rather than assuming success immediately.
+    # Khalti gateway tracking — only populated for method=KHALTI.
     pidx            = Column(String(100), nullable=True, unique=True)
-    gateway_status  = Column(String(50), nullable=True)   # raw status string from Khalti: Pending/Completed/Expired/User canceled/Refunded
+    gateway_status  = Column(String(50), nullable=True)
     transaction_id  = Column(String(100), nullable=True)
 
-    assessment    = relationship("TaxAssessmentModel", back_populates="payments")
+    assessment = relationship("TaxAssessmentModel", back_populates="payments")
     recorded_by_user = relationship("UserModel", back_populates="tax_payments_recorded")
+
+    # The actual PDF/QR/hash artifact lives in its own table now — see
+    # TaxReceiptModel below, same split as BirthRegistrationModel /
+    # CertificateModel. `cascade="all, delete-orphan"` since a receipt
+    # never outlives the payment it belongs to.
+    receipt = relationship(
+        "TaxReceiptModel",
+        back_populates="payment",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    # ── Backward-compatible read-only accessors ──────────────────────
+    # Everything upstream (TaxPaymentResponse, the tax router, the
+    # frontend) was written against payment.pdf_path / payment.qr_path /
+    # payment.data_hash / payment.receipt_issued_at directly, from back
+    # when those columns lived on this table. Rather than touch every
+    # call site, these properties transparently proxy through to the
+    # new TaxReceiptModel row so existing code keeps working unchanged.
+    # New code should prefer `payment.receipt.<field>` directly.
+    @property
+    def pdf_path(self):
+        return self.receipt.pdf_path if self.receipt else None
+
+    @property
+    def qr_path(self):
+        return self.receipt.qr_path if self.receipt else None
+
+    @property
+    def data_hash(self):
+        return self.receipt.data_hash if self.receipt else None
+
+    @property
+    def receipt_issued_at(self):
+        return self.receipt.issued_at if self.receipt else None
+
+
+class TaxReceiptModel(Base):
+    """
+    The issued receipt artifact for a completed tax payment — mirrors
+    CertificateModel's split from BirthRegistrationModel: the payment
+    (like a registration) is the record of what happened, and the
+    receipt (like a certificate) is the separately-issued proof document
+    with its own hash/QR/PDF and its own validity/revocation state.
+
+    One-to-one with TaxPaymentModel: a payment either has no receipt yet
+    (still being generated / generation failed) or exactly one — same
+    idempotency guarantee issue_tax_receipt() already enforced, now
+    backed by payment_id being unique instead of a payment.pdf_path
+    NULL-check.
+    """
+    __tablename__ = "tax_receipt"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    payment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tax_payment.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+
+    data_hash      = Column(String(64), nullable=False)
+    qr_path        = Column(String(255), nullable=True)
+    pdf_path       = Column(String(255), nullable=True)
+    is_valid       = Column(Boolean, nullable=False, default=True)
+    revoked_reason = Column(Text, nullable=True)
+    issued_by      = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    issued_at      = Column(DateTime, server_default=func.now())
+
+    payment = relationship("TaxPaymentModel", back_populates="receipt", uselist=False)
 
 
 class TaxDisputeModel(Base):
