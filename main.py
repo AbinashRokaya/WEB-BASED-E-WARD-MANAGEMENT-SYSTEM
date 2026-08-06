@@ -12,7 +12,7 @@ import os
 app = FastAPI()
 origins = [
     "http://localhost:5173",
-"https://e-ward-frontend.vercel.app/"]
+"https://e-ward-frontend.vercel.app"]
 os.makedirs("static/wards", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 # Base.metadata.create_all(bind=engine)
