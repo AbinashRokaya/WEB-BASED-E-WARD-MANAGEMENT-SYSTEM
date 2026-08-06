@@ -8,31 +8,47 @@ from schema.admin_schema import CreateWordResponse, AssignOfficerRequest, Update
 from model.user_model import UserModel
 from schema.user_schema import RoleSchema
 from auth.hash_password import hash_password_user, verify_password
-import os
-import shutil
 import uuid as uuid_lib
+
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
 ALLOWED_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
-UPLOAD_DIR = "static/wards"
+
+# Cloudinary "folder" prefix — mirrors what UPLOAD_DIR did for the local
+# static/ directory. Same folder as ward_router.py's own upload-images
+# endpoint, so admin-created and ward-self-service uploads land in the
+# same place in the Cloudinary media library.
+CLOUDINARY_WARD_FOLDER = "wards"
 
 
 def save_ward_image(ward_id, file: UploadFile, suffix: str) -> str:
+    """
+    Uploads a ward asset (logo, chairperson signature, chairperson stamp)
+    to Cloudinary and returns the full secure (https) URL. Previously
+    wrote to static/wards/{ward_id}/ and returned a path relative to the
+    /static mount; the DB column now stores the full URL directly.
+    """
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="Only PNG/JPEG/WEBP images allowed")
 
-    ext = os.path.splitext(file.filename)[1] or ".png"
-    ward_dir = os.path.join(UPLOAD_DIR, str(ward_id))
-    os.makedirs(ward_dir, exist_ok=True)
+    public_id = f"{CLOUDINARY_WARD_FOLDER}/{ward_id}/{suffix}_{uuid_lib.uuid4().hex[:8]}"
 
-    filename = f"{suffix}_{uuid_lib.uuid4().hex[:8]}{ext}"
-    filepath = os.path.join(ward_dir, filename)
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file.file,
+            public_id=public_id,
+            resource_type="image",
+            overwrite=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Image upload failed: {e}")
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    return upload_result["secure_url"]
 
-    return f"wards/{ward_id}/{filename}"
+
 @router.post("/ward")
 def create_ward(
     ward_name: str = Form(...),

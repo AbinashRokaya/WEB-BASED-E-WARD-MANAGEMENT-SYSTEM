@@ -1,7 +1,6 @@
 # router/migration_router.py
 import json
 import os
-import shutil
 import uuid as uuid_lib
 from typing import Optional
 from uuid import UUID
@@ -9,7 +8,7 @@ from uuid import UUID
 from fastapi import (
     APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from auth.current_user import require_permission
@@ -33,7 +32,11 @@ from schema.migration_schema import (
 )
 from services.migration_certificate_service import issue_certificate_for_migration_registration
 from services.email_service import send_certificate_ready_email
+from utils.certificate_download import stream_certificate_pdf
 import logging
+
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 logger = logging.getLogger(__name__)
 BACKEND_BASE_URL = os.environ.get("BACKEND_BASE_URL", "http://localhost:8000")
@@ -49,24 +52,36 @@ def serialize(obj, schema):
 
 
 ALLOWED_MIGRATION_DOC_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"}
-MIGRATION_UPLOAD_DIR = "static/migration_registration"
+
+# Cloudinary "folder" prefix — mirrors what MIGRATION_UPLOAD_DIR did for
+# the local static/ directory.
+CLOUDINARY_MIGRATION_FOLDER = "migration_registration"
 
 
 def _save_migration_document(migration_id: UUID, file: UploadFile, suffix: str) -> str:
+    """
+    Uploads a migration-registration document to Cloudinary and returns
+    the full secure (https) URL. Previously wrote to
+    static/migration_registration/{id}/ and returned a path relative to
+    the /static mount; the DB column now stores the full URL directly.
+    """
     if file.content_type not in ALLOWED_MIGRATION_DOC_TYPES:
         raise HTTPException(status_code=400, detail="Only PNG/JPEG/WEBP/PDF files allowed")
 
-    ext = os.path.splitext(file.filename)[1] or ".png"
-    reg_dir = os.path.join(MIGRATION_UPLOAD_DIR, str(migration_id))
-    os.makedirs(reg_dir, exist_ok=True)
+    resource_type = "raw" if file.content_type == "application/pdf" else "image"
+    public_id = f"{CLOUDINARY_MIGRATION_FOLDER}/{migration_id}/{suffix}_{uuid_lib.uuid4().hex[:8]}"
 
-    filename = f"{suffix}_{uuid_lib.uuid4().hex[:8]}{ext}"
-    filepath = os.path.join(reg_dir, filename)
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file.file,
+            public_id=public_id,
+            resource_type=resource_type,
+            overwrite=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Document upload failed: {e}")
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    return f"migration_registration/{migration_id}/{filename}"
+    return upload_result["secure_url"]
 
 
 @router.post("/")
@@ -144,7 +159,7 @@ def create_migration_registration(
         for member_data in family_members_data:
             db.add(MigrationFamilyMemberModel(migration_id=registration.migration_id, **member_data.model_dump()))
 
-        # ---- documents, uploaded in the same request ----
+        # ---- documents, uploaded in the same request (now -> Cloudinary) ----
         if applicant_citizenship_front:
             registration.applicant_citizenship_front_path = _save_migration_document(
                 registration.migration_id, applicant_citizenship_front, "applicant_citizenship_front"
@@ -668,16 +683,9 @@ def download_migration_certificate(migration_id: UUID, db=Depends(get_db)):
     if not registration or not registration.certificate:
         raise HTTPException(status_code=404, detail="Certificate not found")
 
-    pdf_path = os.path.join("static", registration.certificate.pdf_path)
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="Certificate file missing on server")
-
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'inline; filename="{registration.certificate.certificate_no}.pdf"'
-        },
+    return stream_certificate_pdf(
+        registration.certificate.pdf_path,
+        registration.certificate.certificate_no,
     )
 
 

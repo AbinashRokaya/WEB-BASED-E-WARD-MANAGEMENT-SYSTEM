@@ -18,12 +18,14 @@ from schema.birth_registration_schema import (
     ChildRequest, ParentRequest, NomineeRequest, AddressRequest,
 )
 import os
-import shutil
 import uuid as uuid_lib
 from typing import Optional
 from auth.current_user import require_permission
 import json
 from pydantic import ValidationError
+
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 router = APIRouter(
     prefix="/v1/birth-registration",
@@ -36,7 +38,13 @@ def serialize(obj, schema):
 
 
 ALLOWED_DOC_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"}
-BIRTH_UPLOAD_DIR = "static/birth_registration"
+
+# Cloudinary "folder" prefix for this app's uploads — keeps birth-registration
+# documents grouped together in the Cloudinary media library, analogous to
+# what BIRTH_UPLOAD_DIR did for the local static/ directory.
+CLOUDINARY_BIRTH_FOLDER = "birth_registration"
+
+
 def _get_user_ward_or_404(db, current_user) -> WardModel:
     """Look up the logged-in citizen's own ward — single source of truth
     for 'my own ward' in this router, same as recommendation_router.py."""
@@ -71,22 +79,31 @@ def _birth_address_from_ward(ward: WardModel, tole: str = "") -> dict:
         "ward_type": ward.ward_type,
     }
 
+
 def _save_birth_document(registration_id: UUID, file: UploadFile, suffix: str) -> str:
+    """
+    Uploads a birth-registration document to Cloudinary and returns the
+    full secure (https) URL. Previously wrote to
+    static/birth_registration/{id}/ and returned a path relative to the
+    /static mount; the DB column now stores the full URL directly.
+    """
     if file.content_type not in ALLOWED_DOC_TYPES:
         raise HTTPException(status_code=400, detail="Only PNG/JPEG/WEBP/PDF files allowed")
 
-    ext = os.path.splitext(file.filename)[1] or ".png"
-    reg_dir = os.path.join(BIRTH_UPLOAD_DIR, str(registration_id))
-    os.makedirs(reg_dir, exist_ok=True)
+    resource_type = "raw" if file.content_type == "application/pdf" else "image"
+    public_id = f"{CLOUDINARY_BIRTH_FOLDER}/{registration_id}/{suffix}_{uuid_lib.uuid4().hex[:8]}"
 
-    filename = f"{suffix}_{uuid_lib.uuid4().hex[:8]}{ext}"
-    filepath = os.path.join(reg_dir, filename)
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file.file,
+            public_id=public_id,
+            resource_type=resource_type,
+            overwrite=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Document upload failed: {e}")
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # path relative to /static mount
-    return f"birth_registration/{registration_id}/{filename}"
+    return upload_result["secure_url"]
 
 
 @router.post("/")
@@ -163,7 +180,7 @@ def create_birth_registration(
         )
         db.add(address_obj)
 
-        # ---- documents, uploaded in the same request (unchanged) ----
+        # ---- documents, uploaded in the same request (now -> Cloudinary) ----
         if father_citizenship_front:
             registration.father_citizenship_front_path = _save_birth_document(
                 registration.registration_id, father_citizenship_front, "father_citizenship_front"
@@ -615,5 +632,3 @@ def upload_birth_documents(
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    
-

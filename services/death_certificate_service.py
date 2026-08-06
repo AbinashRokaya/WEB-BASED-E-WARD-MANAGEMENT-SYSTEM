@@ -1,4 +1,3 @@
-import os
 import uuid
 import base64
 from datetime import datetime, timezone
@@ -99,11 +98,13 @@ def issue_certificate_for_death_registration(registration, db, issued_by_user_id
     data_hash = compute_data_hash(hash_payload)
 
     cert_id = uuid.uuid4()
-    qr_path = generate_qr(cert_id)
+    qr_path = generate_qr(cert_id)  # now a full Cloudinary secure_url
 
-    qr_abs_path = os.path.join("static", qr_path)
-    with open(qr_abs_path, "rb") as f:
-        qr_data_uri = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+    # qr_path is a Cloudinary URL now — _file_to_data_uri fetches it over
+    # HTTP and returns a base64 data URI for embedding in the offline
+    # Playwright render (also handles legacy local paths, so nothing
+    # breaks for records issued before the Cloudinary switch).
+    qr_data_uri = _file_to_data_uri(qr_path)
 
     with open(LOGO_PATH, "rb") as f:
         logo_data_uri = "data:image/png;base64," + base64.b64encode(f.read()).decode()

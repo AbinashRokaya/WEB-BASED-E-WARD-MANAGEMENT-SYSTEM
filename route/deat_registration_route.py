@@ -2,7 +2,6 @@
 import json
 import logging
 import os
-import shutil
 import uuid as uuid_lib
 from typing import Optional
 from uuid import UUID
@@ -10,7 +9,7 @@ from uuid import UUID
 from fastapi import (
     APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from auth.current_user import require_permission
@@ -32,6 +31,10 @@ from schema.death_schema import (
 )
 from services.death_certificate_service import issue_certificate_for_death_registration
 from services.email_service import send_certificate_ready_email
+from utils.certificate_download import stream_certificate_pdf
+
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -47,24 +50,37 @@ def serialize(obj, schema):
 
 
 ALLOWED_DEATH_DOC_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"}
-DEATH_UPLOAD_DIR = "static/death_registration"
+
+# Cloudinary "folder" prefix — mirrors what DEATH_UPLOAD_DIR did for the
+# local static/ directory.
+CLOUDINARY_DEATH_FOLDER = "death_registration"
 
 
 def _save_death_document(registration_id: UUID, file: UploadFile, suffix: str) -> str:
+    """
+    Uploads a death-registration document to Cloudinary and returns the
+    full secure (https) URL. Previously wrote to
+    static/death_registration/{id}/ and returned a path relative to the
+    /static mount; the DB column now stores the full URL directly.
+    """
     if file.content_type not in ALLOWED_DEATH_DOC_TYPES:
         raise HTTPException(status_code=400, detail="Only PNG/JPEG/WEBP/PDF files allowed")
 
-    ext = os.path.splitext(file.filename)[1] or ".png"
-    reg_dir = os.path.join(DEATH_UPLOAD_DIR, str(registration_id))
-    os.makedirs(reg_dir, exist_ok=True)
+    resource_type = "raw" if file.content_type == "application/pdf" else "image"
+    public_id = f"{CLOUDINARY_DEATH_FOLDER}/{registration_id}/{suffix}_{uuid_lib.uuid4().hex[:8]}"
 
-    filename = f"{suffix}_{uuid_lib.uuid4().hex[:8]}{ext}"
-    filepath = os.path.join(reg_dir, filename)
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file.file,
+            public_id=public_id,
+            resource_type=resource_type,
+            overwrite=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Document upload failed: {e}")
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    return upload_result["secure_url"]
 
-    return f"death_registration/{registration_id}/{filename}"
 
 def _get_user_ward_or_404(db, current_user) -> WardModel:
     """Look up the logged-in citizen's own ward — same pattern as
@@ -174,7 +190,7 @@ def create_death_registration(
         )
         db.add(address_obj)
 
-        # ---- documents, unchanged ----
+        # ---- documents, now -> Cloudinary ----
         if deceased_citizenship_front:
             registration.deceased_citizenship_front_path = _save_death_document(
                 registration.registration_id, deceased_citizenship_front, "deceased_citizenship_front"
@@ -715,16 +731,9 @@ def download_death_certificate(registration_id: UUID, db=Depends(get_db)):
     if not registration or not registration.certificate:
         raise HTTPException(status_code=404, detail="Certificate not found")
 
-    pdf_path = os.path.join("static", registration.certificate.pdf_path)
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="Certificate file missing on server")
-
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        headers={
-            "Content-Disposition": f'inline; filename="{registration.certificate.certificate_no}.pdf"'
-        },
+    return stream_certificate_pdf(
+        registration.certificate.pdf_path,
+        registration.certificate.certificate_no,
     )
 
 

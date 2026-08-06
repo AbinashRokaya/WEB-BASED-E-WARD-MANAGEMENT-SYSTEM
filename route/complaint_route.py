@@ -1,6 +1,4 @@
 # router/complaint_router.py
-import os
-import shutil
 import uuid as uuid_lib
 from typing import Optional
 from uuid import UUID
@@ -20,6 +18,9 @@ from schema.complaint_schema import (
     UpdateComplaintRequest,
 )
 
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
+
 router = APIRouter(
     prefix="/v1/complaint",
     tags=["complaint"]
@@ -31,24 +32,36 @@ def serialize(obj, schema):
 
 
 ALLOWED_COMPLAINT_DOC_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"}
-COMPLAINT_UPLOAD_DIR = "static/complaint"
+
+# Cloudinary "folder" prefix — mirrors what COMPLAINT_UPLOAD_DIR did for
+# the local static/ directory.
+CLOUDINARY_COMPLAINT_FOLDER = "complaint"
 
 
 def _save_complaint_document(complaint_id: UUID, file: UploadFile, suffix: str) -> str:
+    """
+    Uploads a complaint attachment to Cloudinary and returns the full
+    secure (https) URL. Previously wrote to static/complaint/{id}/ and
+    returned a path relative to the /static mount; the DB column now
+    stores the full URL directly.
+    """
     if file.content_type not in ALLOWED_COMPLAINT_DOC_TYPES:
         raise HTTPException(status_code=400, detail="Only PNG/JPEG/WEBP/PDF files allowed")
 
-    ext = os.path.splitext(file.filename)[1] or ".png"
-    complaint_dir = os.path.join(COMPLAINT_UPLOAD_DIR, str(complaint_id))
-    os.makedirs(complaint_dir, exist_ok=True)
+    resource_type = "raw" if file.content_type == "application/pdf" else "image"
+    public_id = f"{CLOUDINARY_COMPLAINT_FOLDER}/{complaint_id}/{suffix}_{uuid_lib.uuid4().hex[:8]}"
 
-    filename = f"{suffix}_{uuid_lib.uuid4().hex[:8]}{ext}"
-    filepath = os.path.join(complaint_dir, filename)
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file.file,
+            public_id=public_id,
+            resource_type=resource_type,
+            overwrite=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Attachment upload failed: {e}")
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    return f"complaint/{complaint_id}/{filename}"
+    return upload_result["secure_url"]
 
 
 def _generate_complaint_number(db) -> str:
@@ -168,7 +181,6 @@ def get_officer_complaints(db=Depends(get_db), current_user=Depends(require_perm
             )
             .all()
         )
-        print(complaints)
         return JSONResponse(
             status_code=200,
             content={
