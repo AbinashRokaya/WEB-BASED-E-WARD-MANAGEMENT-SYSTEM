@@ -12,6 +12,7 @@ import os
 app = FastAPI()
 origins = [
     "http://localhost:5173",
+    "eward-frontend-dmcz-git-fe-6275eb-rokayaabinash9-5771s-projects.vercel.app"
    
 ]
 os.makedirs("static/wards", exist_ok=True)
