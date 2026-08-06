@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import os
 import uuid
@@ -7,22 +8,25 @@ import base64
 from datetime import datetime, timezone
 
 import qrcode
+import requests
 from jinja2 import Environment, FileSystemLoader
 from playwright.sync_api import sync_playwright
+
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 from model.birth_registration_model import CertificateModel
 from schema.user_schema import RoleSchema
 
 SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_ROOT = os.path.dirname(SERVICE_DIR)   # adjust if your services/ folder is nested differently
-LOGO_PATH = os.path.join(BACKEND_ROOT, "assets", "nepal-sarkar.png")
+LOGO_PATH = os.path.join(BACKEND_ROOT, "assets", "nepal-sarkar.png")  # bundled app asset, stays local
 
-QR_DIR = "static/certificates/qr"
-PDF_DIR = "static/certificates/pdf"
+# Cloudinary "folder" prefixes — mirror what QR_DIR / PDF_DIR did locally.
+CLOUDINARY_QR_FOLDER = "certificates/qr"
+CLOUDINARY_PDF_FOLDER = "certificates/pdf"
+
 VERIFY_BASE_URL = os.environ.get("VERIFY_BASE_URL", "http://localhost:5173/verify")
-
-os.makedirs(QR_DIR, exist_ok=True)
-os.makedirs(PDF_DIR, exist_ok=True)
 
 jinja_env = Environment(loader=FileSystemLoader("templates"))
 
@@ -115,12 +119,25 @@ def compute_data_hash(payload: dict) -> str:
 
 
 def generate_qr(cert_id: uuid.UUID) -> str:
+    """
+    Generates the verification QR code entirely in memory and uploads it
+    to Cloudinary. Returns the full secure (https) URL — no local disk
+    write, no /static mount needed for this file anymore.
+    """
     verify_url = f"{VERIFY_BASE_URL}/{cert_id}"
     img = qrcode.make(verify_url)
-    filename = f"{cert_id}.png"
-    filepath = os.path.join(QR_DIR, filename)
-    img.save(filepath)
-    return f"certificates/qr/{filename}"  # relative to /static mount
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    upload_result = cloudinary.uploader.upload(
+        buffer,
+        public_id=f"{CLOUDINARY_QR_FOLDER}/{cert_id}",
+        resource_type="image",
+        overwrite=True,
+    )
+    return upload_result["secure_url"]
 
 
 def render_certificate_pdf(cert_id: uuid.UUID, context: dict, template_name: str = "birth_certificate.html") -> str:
@@ -132,26 +149,34 @@ def render_certificate_pdf(cert_id: uuid.UUID, context: dict, template_name: str
     call sites (which only pass cert_id and context) keep working
     unchanged. Other certificate types (death, migration, ...) pass their
     own template_name explicitly.
+
+    Playwright renders the PDF straight into memory (page.pdf() returns
+    bytes when no `path` is given), and those bytes are uploaded to
+    Cloudinary as a "raw" resource. Returns the secure_url — no local
+    disk write, no /static mount needed for this file anymore.
     """
     template = jinja_env.get_template(template_name)
     html = template.render(**context)
-
-    filename = f"{cert_id}.pdf"
-    filepath = os.path.join(PDF_DIR, filename)
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.set_content(html, wait_until="networkidle")
-        page.pdf(
-            path=filepath,
+        pdf_bytes = page.pdf(
             format="A4",
             print_background=True,
             margin={"top": "10mm", "bottom": "10mm", "left": "10mm", "right": "10mm"},
         )
         browser.close()
 
-    return f"certificates/pdf/{filename}"  # relative to /static mount
+    upload_result = cloudinary.uploader.upload(
+        io.BytesIO(pdf_bytes),
+        public_id=f"{CLOUDINARY_PDF_FOLDER}/{cert_id}",
+        resource_type="raw",
+        overwrite=True,
+    )
+    return upload_result["secure_url"]
+
 
 # ── helpers for the parent lookup + image embedding ────────────────────────
 def _parent_type_value(p) -> str:
@@ -181,15 +206,42 @@ def _build_parent_ctx(p):
     }
 
 
-def _file_to_data_uri(rel_path, mime="image/png"):
-    """rel_path is relative to the static/ mount, e.g. wards/{id}/logo_xxx.png"""
-    if not rel_path:
+def _file_to_data_uri(location, mime="image/png"):
+    """
+    Loads an image and returns it as a base64 data URI, for embedding into
+    the offline-rendered certificate HTML (Playwright can't fetch remote
+    URLs reliably inside the sandboxed render, so everything gets inlined
+    up front).
+
+    `location` may be either:
+      - a full URL (http/https) — e.g. a Cloudinary secure_url, which is
+        what ward_logo_path / chairperson_signature_path / qr_path etc.
+        now store — fetched over HTTP.
+      - a legacy path relative to the static/ mount — kept for backward
+        compatibility with any records saved before the Cloudinary switch.
+
+    Returns None (and never raises) if the asset can't be loaded, so a
+    missing/unreachable image degrades to the template's placeholder
+    instead of failing certificate generation.
+    """
+    if not location:
         return None
-    abs_path = os.path.join("static", rel_path)
-    if not os.path.exists(abs_path):
+
+    try:
+        if location.startswith("http://") or location.startswith("https://"):
+            resp = requests.get(location, timeout=10)
+            resp.raise_for_status()
+            content = resp.content
+        else:
+            abs_path = os.path.join("static", location)
+            if not os.path.exists(abs_path):
+                return None
+            with open(abs_path, "rb") as f:
+                content = f.read()
+    except Exception:
         return None
-    with open(abs_path, "rb") as f:
-        return f"data:{mime};base64," + base64.b64encode(f.read()).decode()
+
+    return f"data:{mime};base64," + base64.b64encode(content).decode()
 
 
 def _build_shared_address(ward, address) -> str:
@@ -267,14 +319,17 @@ def issue_certificate_for_registration(registration, db, issued_by_user_id):
     data_hash = compute_data_hash(hash_payload)
 
     cert_id = uuid.uuid4()
-    qr_path = generate_qr(cert_id)
+    qr_path = generate_qr(cert_id)  # now a full Cloudinary secure_url
 
-    qr_abs_path = os.path.join("static", qr_path)
-    with open(qr_abs_path, "rb") as f:
-        qr_data_uri = "data:image/png;base64," + base64.b64encode(f.read()).decode()
+    # qr_path is a Cloudinary URL now — _file_to_data_uri fetches it over
+    # HTTP and returns a base64 data URI for embedding in the offline
+    # Playwright render (also handles legacy local paths, so nothing
+    # breaks for records issued before the Cloudinary switch).
+    qr_data_uri = _file_to_data_uri(qr_path)
 
     # Embed the logo as base64, same approach as the QR — file:// paths
     # get blocked by Chromium's sandbox when Playwright renders headless.
+    # This is a bundled app asset (not user data), so it stays on local disk.
     with open(LOGO_PATH, "rb") as f:
         logo_data_uri = "data:image/png;base64," + base64.b64encode(f.read()).decode()
 

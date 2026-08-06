@@ -8,9 +8,10 @@ from model.ward_model import WardModel
 from schema.notice_schema import NoticeCreate, NoticeResponse, NoticeType, NoticeStatus
 from auth.current_user import require_permission
 from uuid import UUID
-import os
-import shutil
 import uuid as uuid_lib
+
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 router = APIRouter(
     prefix="/v1/notice",
@@ -23,27 +24,44 @@ ALLOWED_TYPES = {
     "application/msword",  # .doc
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
 }
-UPLOAD_DIR = "static/notices"
+
+# Cloudinary "folder" prefix — mirrors what UPLOAD_DIR did for the local
+# static/ directory.
+CLOUDINARY_NOTICE_FOLDER = "notices"
 
 
 def save_notice_attachment(notice_id, file: UploadFile) -> tuple[str, str]:
+    """
+    Uploads a notice attachment to Cloudinary and returns
+    (secure_url, content_type). Previously wrote to static/notices/{id}/
+    and returned a path relative to the /static mount; the DB column now
+    stores the full URL directly.
+
+    Images upload as Cloudinary "image" resources; PDFs/DOC/DOCX upload
+    as "raw" resources (Cloudinary can't transform/preview those the way
+    it does images, but "raw" stores and serves them as-is, which is all
+    a notice attachment needs).
+    """
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(
             status_code=400,
             detail="Only PNG, JPEG, WEBP, PDF, DOC, or DOCX files are allowed"
         )
 
-    ext = os.path.splitext(file.filename)[1] or ""
-    notice_dir = os.path.join(UPLOAD_DIR, str(notice_id))
-    os.makedirs(notice_dir, exist_ok=True)
+    resource_type = "image" if file.content_type.startswith("image/") else "raw"
+    public_id = f"{CLOUDINARY_NOTICE_FOLDER}/{notice_id}/file_{uuid_lib.uuid4().hex[:8]}"
 
-    filename = f"file_{uuid_lib.uuid4().hex[:8]}{ext}"
-    filepath = os.path.join(notice_dir, filename)
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file.file,
+            public_id=public_id,
+            resource_type=resource_type,
+            overwrite=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Attachment upload failed: {e}")
 
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    return f"notices/{notice_id}/{filename}", file.content_type  # (relative path, mime type)
+    return upload_result["secure_url"], file.content_type  # (url, mime type)
 
 
 @router.post("/create")

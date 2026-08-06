@@ -1,28 +1,30 @@
 """
-reverse_cloudinary_to_static.py
+migrate_static_to_cloudinary.py
 
-Reverses migrate_static_to_cloudinary.py: walks every model/field that
-currently holds a Cloudinary secure_url and downloads it back into the
-local static/ folder structure the app originally used, rewriting the
-DB column back to the old relative path.
+One-off script: walks every model that stores a document/image/PDF path
+and, for any value that's still a local relative static/ path (not yet a
+full http(s) Cloudinary URL), uploads the local file to Cloudinary and
+rewrites the DB column to the new secure_url.
 
-Safe to re-run — any column that's already a local relative path (not
-starting with http/https) is skipped.
+Safe to re-run — any column that's already a full URL is skipped, so a
+second run after a partial failure just picks up where it left off.
 
-Run once, from your backend root, with your normal environment loaded:
+Run once, from your backend root, with your normal environment loaded
+(same DATABASE_URL / CLOUD_NAME / API_KEY / API_SECRET as the app):
 
-    python reverse_cloudinary_to_static.py
-
-Requires `requests` (pip install requests --break-system-packages).
+    python migrate_static_to_cloudinary.py
 """
 import os
 import sys
-import uuid
-import requests
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Adjust this import to match whichever session factory your app actually
+# uses — some of your routers import get_db from database.db, others from
+# database.database. Point this at the same one your app uses.
 from database.db import SessionLocal
+
+from utils.cloud_storage import upload_local_file
 
 from model.birth_registration_model import BirthRegistrationModel, CertificateModel
 from model.death_registration_model import DeathRegistrationModel, DeathCertificateModel
@@ -34,63 +36,36 @@ from model.ward_model import WardModel
 from model.tax_model import TaxReceiptModel
 
 
-def _is_cloud_url(value) -> bool:
-    return bool(value) and str(value).startswith(("http://", "https://"))
+def _is_local_path(value) -> bool:
+    return bool(value) and not str(value).startswith(("http://", "https://"))
 
 
-def _guess_ext(url: str, content_type: str) -> str:
-    path_ext = os.path.splitext(url.split("?")[0])[1]
-    if path_ext and len(path_ext) <= 5:
-        return path_ext
-    mapping = {
-        "image/png": ".png",
-        "image/jpeg": ".jpg",
-        "image/webp": ".webp",
-        "application/pdf": ".pdf",
-        "application/msword": ".doc",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-    }
-    return mapping.get(content_type, "")
-
-
-def _download_to_static(url: str, rel_dir: str, suffix: str) -> str | None:
-    """Downloads url, saves under static/<rel_dir>/<suffix>_<uuid><ext>,
-    returns the path relative to the static/ mount (what the DB column
-    used to store before the Cloudinary migration), or None on failure."""
-    try:
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
-    except Exception as e:
-        print(f"  FAILED download {url}: {e}")
-        return None
-
-    ext = _guess_ext(url, resp.headers.get("Content-Type", ""))
-    filename = f"{suffix}_{uuid.uuid4().hex[:8]}{ext}"
-    local_dir = os.path.join("static", rel_dir)
-    os.makedirs(local_dir, exist_ok=True)
-    local_path = os.path.join(local_dir, filename)
-
-    with open(local_path, "wb") as f:
-        f.write(resp.content)
-
-    return f"{rel_dir}/{filename}"
-
-
-def _revert_field(row, field_name: str, rel_dir: str, suffix: str) -> bool:
+def _migrate_field(row, field_name: str, folder: str, resource_type: str = "image") -> bool:
     value = getattr(row, field_name, None)
-    if not _is_cloud_url(value):
+    if not _is_local_path(value):
         return False
 
-    rel_path = _download_to_static(value, rel_dir, suffix)
-    if not rel_path:
+    local_path = os.path.join("static", value)
+    if not os.path.exists(local_path):
+        print(f"  SKIP {field_name}: local file missing at {local_path}")
         return False
 
-    setattr(row, field_name, rel_path)
-    print(f"  reverted {field_name}: {value} -> {rel_path}")
+    public_id = os.path.splitext(os.path.basename(value))[0]
+    try:
+        url = upload_local_file(local_path, folder=folder, public_id=public_id, resource_type=resource_type)
+    except Exception as e:
+        print(f"  FAILED {field_name} ({local_path}): {e}")
+        return False
+
+    setattr(row, field_name, url)
+    print(f"  migrated {field_name}: {value} -> {url}")
     return True
 
 
-DOCUMENT_REVERSALS = [
+# (model, folder-per-row, [field names]) — folder mirrors the same
+# per-record grouping the live upload endpoints already use, so migrated
+# files land in the same Cloudinary folder a fresh upload would.
+DOCUMENT_MIGRATIONS = [
     (
         BirthRegistrationModel,
         lambda r: f"birth_registration/{r.registration_id}",
@@ -142,14 +117,17 @@ DOCUMENT_REVERSALS = [
     ),
 ]
 
-PDF_REVERSALS = [
+# Certificate/receipt PDFs and QR codes live in fixed folders (not grouped
+# by parent record) — same as the live generate_qr()/render_certificate_pdf()
+# calls already use.
+PDF_MIGRATIONS = [
     (CertificateModel, "certificates/pdf"),
     (DeathCertificateModel, "certificates/pdf"),
     (MigrationCertificateModel, "certificates/pdf"),
     (RecommendationCertificateModel, "certificates/pdf"),
     (TaxReceiptModel, "tax_receipts/pdf"),
 ]
-QR_REVERSALS = [
+QR_MIGRATIONS = [
     (CertificateModel, "certificates/qr"),
     (DeathCertificateModel, "certificates/qr"),
     (MigrationCertificateModel, "certificates/qr"),
@@ -162,31 +140,30 @@ def run():
     db = SessionLocal()
     changed = 0
     try:
-        for model, folder_fn, fields in DOCUMENT_REVERSALS:
+        for model, folder_fn, fields in DOCUMENT_MIGRATIONS:
             rows = db.query(model).all()
             print(f"\n{model.__name__}: {len(rows)} row(s)")
             for row in rows:
-                rel_dir = folder_fn(row)
-                for field in fields:
-                    if _revert_field(row, field, rel_dir, suffix=field.replace("_path", "")):
-                        changed += 1
+                folder = folder_fn(row)
+                if any(_migrate_field(row, field, folder) for field in fields):
+                    changed += 1
 
-        for model, folder in PDF_REVERSALS:
+        for model, folder in PDF_MIGRATIONS:
             rows = db.query(model).all()
             print(f"\n{model.__name__} (pdf_path): {len(rows)} row(s)")
             for row in rows:
-                if _revert_field(row, "pdf_path", folder, suffix="cert"):
+                if _migrate_field(row, "pdf_path", folder):
                     changed += 1
 
-        for model, folder in QR_REVERSALS:
+        for model, folder in QR_MIGRATIONS:
             rows = db.query(model).all()
             print(f"\n{model.__name__} (qr_path): {len(rows)} row(s)")
             for row in rows:
-                if _revert_field(row, "qr_path", folder, suffix="qr"):
+                if _migrate_field(row, "qr_path", folder):
                     changed += 1
 
         db.commit()
-        print(f"\nDone. {changed} row(s) reverted.")
+        print(f"\nDone. {changed} row(s) updated.")
     except Exception:
         db.rollback()
         raise

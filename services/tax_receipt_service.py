@@ -15,25 +15,28 @@ now a separate table.
 """
 import base64
 import hashlib
+import io
 import json
 import os
-from datetime import datetime, timezone
 
 import qrcode
+import requests
 from jinja2 import Environment, FileSystemLoader
 from playwright.sync_api import sync_playwright
+
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 from model.tax_model import TaxPaymentModel, TaxAssessmentModel, TaxReceiptModel
 
 BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LOGO_PATH = os.path.join(BACKEND_ROOT, "assets", "nepal-sarkar.png")
+LOGO_PATH = os.path.join(BACKEND_ROOT, "assets", "nepal-sarkar.png")  # bundled app asset, stays local
 
-QR_DIR = "static/tax_receipts/qr"
-PDF_DIR = "static/tax_receipts/pdf"
+# Cloudinary "folder" prefixes — mirror what QR_DIR / PDF_DIR did locally.
+CLOUDINARY_QR_FOLDER = "tax_receipts/qr"
+CLOUDINARY_PDF_FOLDER = "tax_receipts/pdf"
+
 VERIFY_BASE_URL = os.environ.get("TAX_VERIFY_BASE_URL", "http://localhost:5173/verify-tax-receipt")
-
-os.makedirs(QR_DIR, exist_ok=True)
-os.makedirs(PDF_DIR, exist_ok=True)
 
 jinja_env = Environment(loader=FileSystemLoader("templates"))
 
@@ -51,15 +54,37 @@ def to_nepali_digits(value) -> str:
     return str(value).translate(_NEPALI_DIGITS)
 
 
-def _file_to_data_uri(rel_path, mime="image/png"):
-    """rel_path is relative to the static/ mount, e.g. wards/{id}/stamp_xxx.png"""
-    if not rel_path:
+def _file_to_data_uri(location, mime="image/png"):
+    """
+    Loads an image and returns it as a base64 data URI for embedding into
+    the offline-rendered receipt HTML.
+
+    `location` may be either a full URL (Cloudinary secure_url — what
+    generate_qr / the ward's chairperson_stamp_path now store) fetched
+    over HTTP, or a legacy path relative to the static/ mount, kept for
+    backward compatibility with receipts/wards saved before the
+    Cloudinary switch. Returns None (never raises) if the asset can't be
+    loaded, so a missing/unreachable image degrades to no watermark
+    instead of failing receipt generation.
+    """
+    if not location:
         return None
-    abs_path = os.path.join("static", rel_path)
-    if not os.path.exists(abs_path):
+
+    try:
+        if location.startswith("http://") or location.startswith("https://"):
+            resp = requests.get(location, timeout=10)
+            resp.raise_for_status()
+            content = resp.content
+        else:
+            abs_path = os.path.join("static", location)
+            if not os.path.exists(abs_path):
+                return None
+            with open(abs_path, "rb") as f:
+                content = f.read()
+    except Exception:
         return None
-    with open(abs_path, "rb") as f:
-        return f"data:{mime};base64," + base64.b64encode(f.read()).decode()
+
+    return f"data:{mime};base64," + base64.b64encode(content).decode()
 
 
 def compute_data_hash(payload: dict) -> str:
@@ -74,34 +99,55 @@ def compute_data_hash(payload: dict) -> str:
 
 
 def generate_qr(payment_id) -> str:
+    """
+    Generates the receipt-verification QR code entirely in memory and
+    uploads it to Cloudinary. Returns the full secure (https) URL — no
+    local disk write, no /static mount needed for this file anymore.
+    """
     verify_url = f"{VERIFY_BASE_URL}/{payment_id}"
     img = qrcode.make(verify_url)
-    filename = f"{payment_id}.png"
-    filepath = os.path.join(QR_DIR, filename)
-    img.save(filepath)
-    return f"tax_receipts/qr/{filename}"  # relative to /static mount
+
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+
+    upload_result = cloudinary.uploader.upload(
+        buffer,
+        public_id=f"{CLOUDINARY_QR_FOLDER}/{payment_id}",
+        resource_type="image",
+        overwrite=True,
+    )
+    return upload_result["secure_url"]
 
 
 def render_receipt_pdf(payment_id, context: dict) -> str:
+    """
+    Renders the receipt straight into memory (page.pdf() returns bytes
+    when no `path` is given) and uploads it to Cloudinary as a "raw"
+    resource. Returns the secure_url — no local disk write, no /static
+    mount needed for this file anymore.
+    """
     template = jinja_env.get_template("tax_receipt.html")
     html = template.render(**context)
-
-    filename = f"{payment_id}.pdf"
-    filepath = os.path.join(PDF_DIR, filename)
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.set_content(html, wait_until="networkidle")
-        page.pdf(
-            path=filepath,
+        pdf_bytes = page.pdf(
             format="A4",
             print_background=True,
             margin={"top": "10mm", "bottom": "10mm", "left": "10mm", "right": "10mm"},
         )
         browser.close()
 
-    return f"tax_receipts/pdf/{filename}"  # relative to /static mount
+    upload_result = cloudinary.uploader.upload(
+        io.BytesIO(pdf_bytes),
+        public_id=f"{CLOUDINARY_PDF_FOLDER}/{payment_id}",
+        resource_type="raw",
+        overwrite=True,
+    )
+    return upload_result["secure_url"]
 
 
 def issue_tax_receipt(db, payment: TaxPaymentModel, issued_by_user_id=None) -> TaxPaymentModel:
@@ -140,7 +186,7 @@ def issue_tax_receipt(db, payment: TaxPaymentModel, issued_by_user_id=None) -> T
     }
     data_hash = compute_data_hash(hash_payload)
 
-    qr_path = generate_qr(payment.id)
+    qr_path = generate_qr(payment.id)  # now a full Cloudinary secure_url
     qr_data_uri = _file_to_data_uri(qr_path)
 
     with open(LOGO_PATH, "rb") as f:
@@ -172,7 +218,7 @@ def issue_tax_receipt(db, payment: TaxPaymentModel, issued_by_user_id=None) -> T
         "qr_data_uri": qr_data_uri,
     }
 
-    pdf_path = render_receipt_pdf(payment.id, template_context)
+    pdf_path = render_receipt_pdf(payment.id, template_context)  # full Cloudinary secure_url
 
     receipt = TaxReceiptModel(
         payment_id=payment.id,

@@ -1,7 +1,6 @@
 # router/recommendation_router.py
 import json
 import os
-import shutil
 import uuid as uuid_lib
 from uuid import UUID
 from typing import Optional
@@ -9,7 +8,6 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
-from fastapi.responses import FileResponse, JSONResponse
 from auth.current_user import require_permission
 from database.db import get_db
 from enums.recommendation_enum import RecommendationStatus, RecommendationLetterType
@@ -25,13 +23,20 @@ from fastapi import BackgroundTasks
 from services.recommendation_certificate_service import issue_certificate_for_recommendation_letter
 from services.email_service import send_recommendation_certificate_ready_email
 from schema.certificate_schema import CertificateResponse, VerifyCertificateResponse
+from utils.certificate_download import stream_certificate_pdf
+
+import cloudinary.uploader
+import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 BACKEND_BASE_URL = os.environ.get("BACKEND_BASE_URL", "http://localhost:8000")
 
 router = APIRouter(prefix="/v1/recommendation-letter", tags=["recommendation-letter"])
 
 ALLOWED_DOC_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp", "application/pdf"}
-UPLOAD_DIR = "static/recommendation_letter"
+
+# Cloudinary "folder" prefix — mirrors what UPLOAD_DIR did for the local
+# static/ directory.
+CLOUDINARY_RECOMMENDATION_FOLDER = "recommendation_letter"
 
 # Server-side mirror of the frontend's DOCUMENT_REQUIREMENTS — which
 # letter types require a supporting document beyond citizenship.
@@ -95,16 +100,29 @@ def _address_from_ward(ward: WardModel, tole: str = "") -> dict:
 
 
 def _save_document(letter_id: UUID, file: UploadFile, suffix: str) -> str:
+    """
+    Uploads a recommendation-letter document to Cloudinary and returns
+    the full secure (https) URL. Previously wrote to
+    static/recommendation_letter/{id}/ and returned a path relative to
+    the /static mount; the DB column now stores the full URL directly.
+    """
     if file.content_type not in ALLOWED_DOC_TYPES:
         raise HTTPException(status_code=400, detail="Only PNG/JPEG/WEBP/PDF files allowed")
-    ext = os.path.splitext(file.filename)[1] or ".png"
-    letter_dir = os.path.join(UPLOAD_DIR, str(letter_id))
-    os.makedirs(letter_dir, exist_ok=True)
-    filename = f"{suffix}_{uuid_lib.uuid4().hex[:8]}{ext}"
-    filepath = os.path.join(letter_dir, filename)
-    with open(filepath, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    return f"recommendation_letter/{letter_id}/{filename}"
+
+    resource_type = "raw" if file.content_type == "application/pdf" else "image"
+    public_id = f"{CLOUDINARY_RECOMMENDATION_FOLDER}/{letter_id}/{suffix}_{uuid_lib.uuid4().hex[:8]}"
+
+    try:
+        upload_result = cloudinary.uploader.upload(
+            file.file,
+            public_id=public_id,
+            resource_type=resource_type,
+            overwrite=False,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Document upload failed: {e}")
+
+    return upload_result["secure_url"]
 
 
 # ── NEW: the frontend calls this on mount to get the citizen's own address
@@ -517,14 +535,9 @@ def download_recommendation_certificate(letter_id: UUID, db=Depends(get_db)):
     if not letter or not letter.certificate:
         raise HTTPException(status_code=404, detail="Certificate not found")
 
-    pdf_path = os.path.join("static", letter.certificate.pdf_path)
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="Certificate file missing on server")
-
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="{letter.certificate.certificate_no}.pdf"'},
+    return stream_certificate_pdf(
+        letter.certificate.pdf_path,
+        letter.certificate.certificate_no,
     )
 
 @router.get("/certificate/verify/{cert_id}", response_model=None)
