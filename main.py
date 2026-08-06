@@ -12,8 +12,7 @@ import os
 app = FastAPI()
 origins = [
     "http://localhost:5173",
-    "eward-frontend-dmcz-git-fe-6275eb-rokayaabinash9-5771s-projects.vercel.app"
-   
+    "https://eward-frontend-dmcz-git-fe-6275eb-rokayaabinash9-5771s-projects.vercel.app"
 ]
 os.makedirs("static/wards", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -26,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine) 
 
 @app.get("/")
 def read_root():
