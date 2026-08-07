@@ -78,6 +78,8 @@ class RecommendationRejectModel(Base):
     letter = relationship("RecommendationLetterModel", back_populates="reject")
 
 
+from sqlalchemy import Boolean  # add to your existing import line
+
 class RecommendationCertificateModel(Base):
     __tablename__ = "recommendation_certificate"
 
@@ -88,6 +90,8 @@ class RecommendationCertificateModel(Base):
     qr_path = Column(String, nullable=True)
     pdf_path = Column(String, nullable=True)
     issued_by = Column(Integer, ForeignKey("users.user_id", ondelete="SET NULL"), nullable=True)
+    is_valid = Column(Boolean, nullable=False, default=True)
+    revoked_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
 
     letter = relationship("RecommendationLetterModel", back_populates="certificate")
