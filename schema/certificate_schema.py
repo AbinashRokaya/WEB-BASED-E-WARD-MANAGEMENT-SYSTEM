@@ -24,3 +24,4 @@ class VerifyCertificateResponse(BaseModel):
     register_status: str
     issued_date: datetime
     revoked_reason: Optional[str] = None
+    pdf_url: Optional[str] = None

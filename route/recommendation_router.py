@@ -551,15 +551,18 @@ def verify_recommendation_certificate(cert_id: UUID, db=Depends(get_db)):
         raise HTTPException(status_code=404, detail="Certificate not found")
 
     letter = certificate.letter
+    pdf_url = f"{BACKEND_BASE_URL}/v1/recommendation-letter/{letter.letter_id}/certificate/download"
+
     return JSONResponse(
         status_code=200,
         content=VerifyCertificateResponse(
             valid=certificate.is_valid,
             certificate_no=certificate.certificate_no,
-            child_full_name=letter.applicant_full_name_en,  # generic field name, reused across cert types
+            child_full_name=letter.applicant_full_name_en,
             register_status=letter.register_status.value,
             issued_date=certificate.created_at,
             revoked_reason=certificate.revoked_reason,
+            pdf_url=pdf_url,
         ).model_dump(mode="json"),
     )
 
