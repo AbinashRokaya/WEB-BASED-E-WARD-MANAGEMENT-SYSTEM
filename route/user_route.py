@@ -215,14 +215,14 @@ def login_user(request: LoginRequest, db: get_db = Depends()):
     }
 )
         json_response.set_cookie(
-            key="access_token",
-            value=access_token,
-            httponly=True,
-            max_age=3600,
-            samesite="lax",
-            secure=False,
-            path="/",
-        )
+    key="access_token",
+    value=access_token,
+    httponly=True,
+    max_age=3600,
+    samesite="none",   # was "lax"
+    secure=True,       # required when samesite="none"
+    path="/",
+)
 
         return json_response
     
