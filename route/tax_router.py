@@ -1014,6 +1014,7 @@ def verify_tax_receipt(payment_id: UUID, db=Depends(get_db)):
                 "fiscal_year": assessment.fiscal_year if assessment else None,
                 "citizen_name": assessment.citizen_name if assessment else None,
                 "data_hash": payment.data_hash,
+                "pdf_url": payment.pdf_path,   # new
             },
         },
     )

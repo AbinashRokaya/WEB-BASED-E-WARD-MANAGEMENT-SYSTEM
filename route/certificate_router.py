@@ -16,6 +16,7 @@ from services.certificate_service import (
     render_certificate_pdf,
     issue_certificate_for_registration,
 )
+from utils.certificate_download import stream_certificate_pdf
 from services.email_service import send_certificate_ready_email
 from auth.current_user import require_permission
 
@@ -99,20 +100,10 @@ def download_certificate(registration_id: UUID, db=Depends(get_db)):
     if not registration or not registration.certificate:
         raise HTTPException(status_code=404, detail="Certificate not found")
 
-    pdf_path = os.path.join("static", registration.certificate.pdf_path)
-    if not os.path.exists(pdf_path):
-        raise HTTPException(status_code=404, detail="Certificate file missing on server")
-
-    return FileResponse(
-        pdf_path,
-        media_type="application/pdf",
-        headers={
-            # "inline" tells the browser to render it (e.g. in an <iframe>)
-            # instead of forcing a download.
-            "Content-Disposition": f'inline; filename="{registration.certificate.certificate_no}.pdf"'
-        },
+    return stream_certificate_pdf(
+        registration.certificate.pdf_path,
+        registration.certificate.certificate_no,
     )
-
 
 # Public — no auth. This is what the QR code links to.
 @router.get("/certificate/verify/{cert_id}", response_model=None)
@@ -123,6 +114,7 @@ def verify_certificate(cert_id: UUID, db=Depends(get_db)):
 
     registration = certificate.registration
     child = registration.child
+    pdf_url = f"{BACKEND_BASE_URL}/v1/birth-registration/{registration.registration_id}/certificate/download"
 
     return JSONResponse(
         status_code=200,
@@ -133,5 +125,6 @@ def verify_certificate(cert_id: UUID, db=Depends(get_db)):
             register_status=registration.register_status.value,
             issued_date=certificate.created_at,
             revoked_reason=certificate.revoked_reason,
+            pdf_url=pdf_url,
         ).model_dump(mode="json"),
     )

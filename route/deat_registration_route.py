@@ -745,6 +745,7 @@ def verify_death_certificate(cert_id: UUID, db=Depends(get_db)):
 
     registration = certificate.registration
     deceased = registration.deceased
+    pdf_url = f"{BACKEND_BASE_URL}/v1/death-registration/{registration.registration_id}/certificate/download"
 
     return JSONResponse(
         status_code=200,
@@ -755,5 +756,6 @@ def verify_death_certificate(cert_id: UUID, db=Depends(get_db)):
             register_status=registration.register_status.value,
             issued_date=certificate.created_at,
             revoked_reason=certificate.revoked_reason,
+            pdf_url=pdf_url,
         ).model_dump(mode="json"),
     )
