@@ -29,6 +29,13 @@ import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on impo
 
 from model.tax_model import TaxPaymentModel, TaxAssessmentModel, TaxReceiptModel
 
+# Reuse the SAME font data URIs that certificate_service.py already
+# loads (Devanagari font, base64-embedded). Importing rather than
+# re-loading avoids reading/encoding the .ttf files twice at import
+# time and keeps there being exactly one place that knows the font
+# asset paths.
+from services.certificate_service import _FONT_DATA_URIS
+
 BACKEND_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO_PATH = os.path.join(BACKEND_ROOT, "assets", "nepal-sarkar.png")  # bundled app asset, stays local
 
@@ -126,9 +133,15 @@ def render_receipt_pdf(payment_id, context: dict) -> str:
     when no `path` is given) and uploads it to Cloudinary as a "raw"
     resource. Returns the secure_url — no local disk write, no /static
     mount needed for this file anymore.
+
+    _FONT_DATA_URIS is merged in here so tax_receipt.html's @font-face
+    rules have the Devanagari font available — without this, Nepali text
+    on the receipt renders as empty boxes on any host (like Render) that
+    doesn't have the font installed system-wide, even though it looks
+    fine on localhost.
     """
     template = jinja_env.get_template("tax_receipt.html")
-    html = template.render(**context)
+    html = template.render(**context, **_FONT_DATA_URIS)
 
     with sync_playwright() as p:
         browser = p.chromium.launch()

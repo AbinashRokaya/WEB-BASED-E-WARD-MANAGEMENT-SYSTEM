@@ -22,6 +22,15 @@ SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_ROOT = os.path.dirname(SERVICE_DIR)   # adjust if your services/ folder is nested differently
 LOGO_PATH = os.path.join(BACKEND_ROOT, "assets", "nepal-sarkar.png")  # bundled app asset, stays local
 
+# ── Devanagari font, bundled as an app asset (NOT relying on the host
+# OS having any particular fonts installed — Render's minimal container
+# has none by default, which is why Nepali text rendered as empty boxes
+# in production while working fine on localhost). Download "Noto Sans
+# Devanagari" (Regular + Bold) from Google Fonts and place the .ttf
+# files here.
+FONT_REGULAR_PATH = os.path.join(BACKEND_ROOT, "assets", "NotoSansDevanagari-Regular.ttf")
+FONT_BOLD_PATH = os.path.join(BACKEND_ROOT, "assets", "NotoSansDevanagari-Bold.ttf")
+
 # Cloudinary "folder" prefixes — mirror what QR_DIR / PDF_DIR did locally.
 CLOUDINARY_QR_FOLDER = "certificates/qr"
 CLOUDINARY_PDF_FOLDER = "certificates/pdf"
@@ -32,6 +41,34 @@ jinja_env = Environment(loader=FileSystemLoader("templates"))
 
 # ── Nepali digit conversion ────────────────────────────────────────────────
 _NEPALI_DIGITS = str.maketrans("0123456789", "०१२३४५६७८९")
+
+
+def _load_font_data_uris() -> dict:
+    """
+    Base64-embeds the Devanagari font files so every certificate template
+    renders correctly regardless of what fonts (if any) are installed on
+    the host. Loaded once at import time — the font files never change
+    at runtime, so there's no reason to re-read them on every PDF render.
+
+    Returns None for a key if the font file is missing, so a missing
+    font degrades to the template's fallback font-family instead of
+    crashing certificate generation.
+    """
+    result = {}
+    for key, path in [
+        ("font_regular_data_uri", FONT_REGULAR_PATH),
+        ("font_bold_data_uri", FONT_BOLD_PATH),
+    ]:
+        try:
+            with open(path, "rb") as f:
+                result[key] = "data:font/ttf;base64," + base64.b64encode(f.read()).decode()
+        except FileNotFoundError:
+            result[key] = None
+    return result
+
+
+# Computed once at import time, reused for every certificate rendered.
+_FONT_DATA_URIS = _load_font_data_uris()
 
 
 def _build_informant_ctx(n):
@@ -147,8 +184,13 @@ def render_certificate_pdf(cert_id: uuid.UUID, context: dict, template_name: str
 
     template_name defaults to the birth certificate template so existing
     call sites (which only pass cert_id and context) keep working
-    unchanged. Other certificate types (death, migration, ...) pass their
-    own template_name explicitly.
+    unchanged. Other certificate types (death, migration, recommendation)
+    pass their own template_name explicitly.
+
+    The Devanagari font data URIs are merged into every render here, so
+    none of the per-certificate-type services (birth/death/migration/
+    recommendation) need to remember to pass them individually — they
+    just need the matching @font-face block in their template.
 
     Playwright renders the PDF straight into memory (page.pdf() returns
     bytes when no `path` is given), and those bytes are uploaded to
@@ -156,7 +198,7 @@ def render_certificate_pdf(cert_id: uuid.UUID, context: dict, template_name: str
     disk write, no /static mount needed for this file anymore.
     """
     template = jinja_env.get_template(template_name)
-    html = template.render(**context)
+    html = template.render(**context, **_FONT_DATA_URIS)
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
