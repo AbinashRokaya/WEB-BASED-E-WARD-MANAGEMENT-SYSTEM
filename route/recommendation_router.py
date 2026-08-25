@@ -9,7 +9,6 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from auth.current_user import require_permission
-from config import settings
 from database.db import get_db
 from enums.recommendation_enum import RecommendationStatus, RecommendationLetterType
 from model.recommendation_model import RecommendationLetterModel, RecommendationRejectModel
@@ -22,15 +21,14 @@ from schema.recommendation_schema import (
 
 from fastapi import BackgroundTasks
 from services.recommendation_certificate_service import issue_certificate_for_recommendation_letter
-from services.notification_service import notify_certificate_issued
+from services.email_service import send_recommendation_certificate_ready_email
 from schema.certificate_schema import CertificateResponse, VerifyCertificateResponse
 from utils.certificate_download import stream_certificate_pdf
 
 import cloudinary.uploader
 import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
-# BACKEND_BASE_URL now lives in config/settings.py (it was duplicated
-# across four routers, which is exactly how such constants drift apart).
+BACKEND_BASE_URL = os.environ.get("BACKEND_BASE_URL", "http://localhost:8000")
 
 router = APIRouter(prefix="/v1/recommendation-letter", tags=["recommendation-letter"])
 
@@ -441,11 +439,7 @@ def update_recommendation_letter(
 
 
 @router.post("/{letter_id}/approve")
-def approve_letter(
-    letter_id: UUID,
-    db=Depends(get_db),
-    current_user=Depends(require_permission("update_user")),   # was: no auth at all
-):
+def approve_letter(letter_id: UUID, db=Depends(get_db)):
     letter = db.query(RecommendationLetterModel).filter(
         RecommendationLetterModel.letter_id == letter_id
     ).first()
@@ -464,12 +458,7 @@ def approve_letter(
 
 
 @router.post("/{letter_id}/reject")
-def reject_letter(
-    letter_id: UUID,
-    request: RejectRequest,
-    db=Depends(get_db),
-    current_user=Depends(require_permission("update_user")),   # was: no auth at all
-):
+def reject_letter(letter_id: UUID, request: RejectRequest, db=Depends(get_db)):
     letter = db.query(RecommendationLetterModel).filter(
         RecommendationLetterModel.letter_id == letter_id
     ).first()
@@ -507,27 +496,26 @@ def issue_recommendation_certificate(
     if not letter:
         raise HTTPException(status_code=404, detail="Letter not found")
 
-    # WAS: RecommendationStatus.SUBMITTED. That let a letter jump straight to a
-    # signed certificate without the ward secretary ever verifying it — while
-    # /v1/ward-chairperson/recommendation/{id}/approve correctly required
-    # VERIFIED. Two doors, two different rules. VERIFIED is the correct one and
-    # matches issue_certificate_for_recommendation_letter's own docstring.
-    if letter.register_status != RecommendationStatus.VERIFIED:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Only VERIFIED letters can be issued a certificate "
-                f"(current status: {letter.register_status.value})"
-            ),
-        )
+    if letter.register_status != RecommendationStatus.SUBMITTED:
+        raise HTTPException(status_code=400, detail="Only SUBMITTED letters can be issued a certificate")
 
     try:
         certificate = issue_certificate_for_recommendation_letter(letter, db, current_user.user_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Was ~20 lines of duplicated recipient lookup + three log branches.
-    emailed = notify_certificate_issued(background_tasks, "recommendation", letter, certificate)
+    submitted_by = letter.submitted_by_user
+    submitted_by_email = getattr(submitted_by, "user_email", None) if submitted_by else None
+
+    if submitted_by_email:
+        download_url = f"{BACKEND_BASE_URL}/v1/recommendation-letter/{letter.letter_id}/certificate/download"
+        background_tasks.add_task(
+            send_recommendation_certificate_ready_email,
+            submitted_by_email,
+            letter.applicant_full_name_en,
+            certificate.certificate_no,
+            download_url,
+        )
 
     return JSONResponse(
         status_code=201,
@@ -535,7 +523,6 @@ def issue_recommendation_certificate(
             "success": True,
             "status_code": 201,
             "message": "Certificate issued successfully",
-            "notification_sent": emailed,
             "data": CertificateResponse.model_validate(certificate).model_dump(mode="json"),
         },
     )
@@ -564,7 +551,7 @@ def verify_recommendation_certificate(cert_id: UUID, db=Depends(get_db)):
         raise HTTPException(status_code=404, detail="Certificate not found")
 
     letter = certificate.letter
-    pdf_url = f"{settings.BACKEND_BASE_URL}/v1/recommendation-letter/{letter.letter_id}/certificate/download"
+    pdf_url = f"{BACKEND_BASE_URL}/v1/recommendation-letter/{letter.letter_id}/certificate/download"
 
     return JSONResponse(
         status_code=200,
