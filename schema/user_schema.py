@@ -197,7 +197,7 @@ Permission_Role = {
         "update_registration",
     },
     RoleSchema.DataValidationOfficer: {
-        "read_user", "validate_data", "update_registration",
+        "read_user", "validate_data", "update_registration","update_user"
     },
 }
 
