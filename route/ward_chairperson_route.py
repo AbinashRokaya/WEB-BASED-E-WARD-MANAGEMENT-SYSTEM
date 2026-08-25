@@ -1,4 +1,4 @@
-from fastapi import HTTPException, APIRouter, Depends,File, Form, UploadFile
+from fastapi import HTTPException, APIRouter, BackgroundTasks, Depends, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from uuid import UUID
 from database.db import get_db
@@ -65,6 +65,7 @@ from schema.recommendation_schema import (
 from services.recommendation_certificate_service import (
     issue_certificate_for_recommendation_letter,
 )
+from services.notification_service import notify_certificate_issued
 from route.complaint_route import _save_complaint_document  # reuse the same saver
 from model.complaint_model import ComplaintModel, ComplaintRejectModel
 from enums.complaint_enum import ComplaintStatus
@@ -86,7 +87,12 @@ def serialize(obj, schema):
 # ══════════════════════════════════════════════
 
 @router.post("/{registration_id}/approve")
-def approve_registration(registration_id: UUID, db=Depends(get_db), current_user=Depends(require_permission("update_user"))):
+def approve_registration(
+    registration_id: UUID,
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("issue_certificate")),
+):
     try:
         registration = db.query(BirthRegistrationModel).filter(
             BirthRegistrationModel.registration_id == registration_id
@@ -102,13 +108,20 @@ def approve_registration(registration_id: UUID, db=Depends(get_db), current_user
 
         certificate = issue_certificate_for_registration(registration, db, current_user.user_id)
 
+        # THE FIX: this path issued the certificate and told nobody.
+        # Same notification the /issue-certificate endpoint sends.
+        emailed = notify_certificate_issued(background_tasks, "birth", registration, certificate)
+
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
                 "status_code": 200,
                 "message": "Certificate issued successfully",
-                "data": {"certificate_no": certificate.certificate_no}
+                "data": {
+                    "certificate_no": certificate.certificate_no,
+                    "notification_sent": emailed,
+                },
             }
         )
 
@@ -200,7 +213,12 @@ def reject_registration(
 # ══════════════════════════════════════════════
 
 @router.post("/death/{registration_id}/approve")
-def approve_death_registration(registration_id: UUID, db=Depends(get_db), current_user=Depends(require_permission("update_user"))):
+def approve_death_registration(
+    registration_id: UUID,
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("issue_certificate")),
+):
     try:
         registration = db.query(DeathRegistrationModel).filter(
             DeathRegistrationModel.registration_id == registration_id
@@ -216,13 +234,20 @@ def approve_death_registration(registration_id: UUID, db=Depends(get_db), curren
 
         certificate = issue_certificate_for_death_registration(registration, db, current_user.user_id)
 
+        # THE FIX: this path issued the certificate and told nobody.
+        # Same notification the /issue-certificate endpoint sends.
+        emailed = notify_certificate_issued(background_tasks, "death", registration, certificate)
+
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
                 "status_code": 200,
                 "message": "Certificate issued successfully",
-                "data": {"certificate_no": certificate.certificate_no}
+                "data": {
+                    "certificate_no": certificate.certificate_no,
+                    "notification_sent": emailed,
+                },
             }
         )
 
@@ -315,7 +340,12 @@ def reject_death_registration(
 # ══════════════════════════════════════════════
 
 @router.post("/migration/{migration_id}/approve")
-def approve_migration_registration(migration_id: UUID, db=Depends(get_db), current_user=Depends(require_permission("update_user"))):
+def approve_migration_registration(
+    migration_id: UUID,
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("issue_certificate")),
+):
     try:
         registration = db.query(MigrationRegistrationModel).filter(
             MigrationRegistrationModel.migration_id == migration_id
@@ -331,13 +361,20 @@ def approve_migration_registration(migration_id: UUID, db=Depends(get_db), curre
 
         certificate = issue_certificate_for_migration_registration(registration, db, current_user.user_id)
 
+        # THE FIX: this path issued the certificate and told nobody.
+        # Same notification the /issue-certificate endpoint sends.
+        emailed = notify_certificate_issued(background_tasks, "migration", registration, certificate)
+
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
                 "status_code": 200,
                 "message": "Certificate issued successfully",
-                "data": {"certificate_no": certificate.certificate_no}
+                "data": {
+                    "certificate_no": certificate.certificate_no,
+                    "notification_sent": emailed,
+                },
             }
         )
 
@@ -440,7 +477,12 @@ def reject_migration_registration(
 # naming exactly — so /all and the frontend config key off that.
 
 @router.post("/recommendation/{letter_id}/approve")
-def approve_recommendation_letter(letter_id: UUID, db=Depends(get_db), current_user=Depends(require_permission("update_user"))):
+def approve_recommendation_letter(
+    letter_id: UUID,
+    background_tasks: BackgroundTasks,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("issue_certificate")),
+):
     try:
         letter = db.query(RecommendationLetterModel).filter(
             RecommendationLetterModel.letter_id == letter_id
@@ -456,13 +498,20 @@ def approve_recommendation_letter(letter_id: UUID, db=Depends(get_db), current_u
 
         certificate = issue_certificate_for_recommendation_letter(letter, db, current_user.user_id)
 
+        # THE FIX: this path issued the certificate and told nobody.
+        # Same notification the /issue-certificate endpoint sends.
+        emailed = notify_certificate_issued(background_tasks, "recommendation", letter, certificate)
+
         return JSONResponse(
             status_code=200,
             content={
                 "success": True,
                 "status_code": 200,
                 "message": "Certificate issued successfully",
-                "data": {"certificate_no": certificate.certificate_no}
+                "data": {
+                    "certificate_no": certificate.certificate_no,
+                    "notification_sent": emailed,
+                },
             }
         )
 

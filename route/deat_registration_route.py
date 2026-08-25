@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from auth.current_user import require_permission
+from config import settings
 from database.db import get_db
 from enums.death_enum import DeathRegistrationStatus
 from model.death_registration_model import (
@@ -30,7 +31,7 @@ from schema.death_schema import (
     UpdateInformantRequest,
 )
 from services.death_certificate_service import issue_certificate_for_death_registration
-from services.email_service import send_certificate_ready_email
+from services.notification_service import notify_certificate_issued
 from utils.certificate_download import stream_certificate_pdf
 
 import cloudinary.uploader
@@ -42,7 +43,8 @@ router = APIRouter(
     tags=["death-registration"]
 )
 
-BACKEND_BASE_URL = os.environ.get("BACKEND_BASE_URL", "http://localhost:8000")
+# BACKEND_BASE_URL now lives in config/settings.py (it was duplicated
+# across four routers, which is exactly how such constants drift apart).
 
 
 def serialize(obj, schema):
@@ -561,7 +563,11 @@ def reject_registration(
 
 
 @router.post("/{registration_id}/approve")
-def approve_registration(registration_id: UUID, db=Depends(get_db)):
+def approve_registration(
+    registration_id: UUID,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("update_user")),   # was: no auth at all
+):
     try:
         registration = db.query(DeathRegistrationModel).filter(
             DeathRegistrationModel.registration_id == registration_id
@@ -687,30 +693,8 @@ def issue_death_certificate(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    submitted_by = registration.submitted_by_user
-    submitted_by_email = getattr(submitted_by, "user_email", None) if submitted_by else None
-
-    if submitted_by_email:
-        download_url = f"{BACKEND_BASE_URL}/v1/death-registration/{registration.registration_id}/certificate/download"
-        deceased_name = f"{registration.deceased.deceased_first_name} {registration.deceased.deceased_last_name}"
-        background_tasks.add_task(
-            send_certificate_ready_email,
-            submitted_by_email,
-            deceased_name,
-            certificate.certificate_no,
-            download_url,
-        )
-        logger.info(f"Death certificate email queued for {submitted_by_email}")
-    elif not submitted_by:
-        logger.warning(
-            f"Death certificate {certificate.certificate_no} issued but registration.submitted_by_user "
-            f"is missing — no email sent."
-        )
-    else:
-        logger.warning(
-            f"Death certificate {certificate.certificate_no} issued but user {submitted_by.user_id} "
-            f"has no user_email on file — no email sent."
-        )
+    # Was ~20 lines of duplicated recipient lookup + three log branches.
+    emailed = notify_certificate_issued(background_tasks, "death", registration, certificate)
 
     return JSONResponse(
         status_code=201,
@@ -718,6 +702,7 @@ def issue_death_certificate(
             "success": True,
             "status_code": 201,
             "message": "Certificate issued successfully",
+            "notification_sent": emailed,
             "data": CertificateResponse.model_validate(certificate).model_dump(mode="json"),
         },
     )
@@ -745,7 +730,7 @@ def verify_death_certificate(cert_id: UUID, db=Depends(get_db)):
 
     registration = certificate.registration
     deceased = registration.deceased
-    pdf_url = f"{BACKEND_BASE_URL}/v1/death-registration/{registration.registration_id}/certificate/download"
+    pdf_url = f"{settings.BACKEND_BASE_URL}/v1/death-registration/{registration.registration_id}/certificate/download"
 
     return JSONResponse(
         status_code=200,

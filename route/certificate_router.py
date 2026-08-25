@@ -1,8 +1,7 @@
-import os
 import logging
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from uuid import UUID
 
 from database.db import get_db
@@ -17,19 +16,16 @@ from services.certificate_service import (
     issue_certificate_for_registration,
 )
 from utils.certificate_download import stream_certificate_pdf
-from services.email_service import send_certificate_ready_email
+from services.notification_service import notify_certificate_issued
 from auth.current_user import require_permission
+from config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/birth-registration", tags=["certificate"])
 
-# Public base URL of THIS backend (where the download route below actually
-# lives). Deliberately separate from services.certificate_service.VERIFY_BASE_URL,
-# which points at the frontend's /verify page that the QR code links to —
-# those are two different servers/ports and should not be derived from
-# each other.
-BACKEND_BASE_URL = os.environ.get("BACKEND_BASE_URL", "http://localhost:8000")
+# Base URLs now come from config/settings.py — they were duplicated
+# across four routers, which is how they drift apart.
 
 
 @router.post("/{registration_id}/issue-certificate")
@@ -53,33 +49,9 @@ def issue_certificate(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # Previously this block failed completely silently if submitted_by was
-    # missing or had no email — no log line, nothing. That made it look
-    # like the SMTP config itself was broken when the real issue was
-    # upstream: the email was never even queued as a background task.
-    submitted_by = registration.submitted_by_user
-    submitted_by_email = getattr(submitted_by, "user_email", None) if submitted_by else None
-
-    if submitted_by_email:
-        download_url = f"{BACKEND_BASE_URL}/v1/birth-registration/{registration.registration_id}/certificate/download"
-        background_tasks.add_task(
-            send_certificate_ready_email,
-            submitted_by_email,
-            f"{registration.child.child_first_name} {registration.child.child_last_name}",
-            certificate.certificate_no,
-            download_url,
-        )
-        logger.info(f"Certificate email queued for {submitted_by_email}")
-    elif not submitted_by:
-        logger.warning(
-            f"Certificate {certificate.certificate_no} issued but registration.submitted_by_user "
-            f"is missing — no email sent."
-        )
-    else:
-        logger.warning(
-            f"Certificate {certificate.certificate_no} issued but user {submitted_by.user_id} "
-            f"has no user_email on file — no email sent."
-        )
+    # All of this used to be ~20 lines duplicated in four routers, each with
+    # slightly different logging. It now lives in notification_service.
+    emailed = notify_certificate_issued(background_tasks, "birth", registration, certificate)
 
     return JSONResponse(
         status_code=201,
@@ -87,6 +59,7 @@ def issue_certificate(
             "success": True,
             "status_code": 201,
             "message": "Certificate issued successfully",
+            "notification_sent": emailed,
             "data": CertificateResponse.model_validate(certificate).model_dump(mode="json"),
         },
     )
@@ -114,7 +87,7 @@ def verify_certificate(cert_id: UUID, db=Depends(get_db)):
 
     registration = certificate.registration
     child = registration.child
-    pdf_url = f"{BACKEND_BASE_URL}/v1/birth-registration/{registration.registration_id}/certificate/download"
+    pdf_url = f"{settings.BACKEND_BASE_URL}/v1/birth-registration/{registration.registration_id}/certificate/download"
 
     return JSONResponse(
         status_code=200,
