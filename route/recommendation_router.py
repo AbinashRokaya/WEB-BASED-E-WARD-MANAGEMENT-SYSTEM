@@ -444,7 +444,16 @@ def update_recommendation_letter(
 def approve_letter(
     letter_id: UUID,
     db=Depends(get_db),
-    current_user=Depends(require_permission("update_user")),   # was: no auth at all
+    # PERMISSION: validate_data, NOT update_user.
+    # This endpoint performs SUBMITTED -> APPROVED, which is the DATA
+    # VALIDATION stage of the pipeline — the DataValidationOfficer owns it.
+    # It originally had no auth at all; an earlier fix wrongly locked it to
+    # update_user, which the DVO does not have, producing:
+    #   "RoleSchema.DataValidationOfficer is not allowed to perform 'update_user'"
+    # The later stages live elsewhere and keep their own permissions:
+    #   APPROVED -> VERIFIED            : /v1/ward-secretary/recommendation/...
+    #   VERIFIED -> CERTIFICATE_ISSUED  : /v1/ward-chairperson/recommendation/...
+    current_user=Depends(require_permission("validate_data")),
 ):
     letter = db.query(RecommendationLetterModel).filter(
         RecommendationLetterModel.letter_id == letter_id
@@ -468,7 +477,16 @@ def reject_letter(
     letter_id: UUID,
     request: RejectRequest,
     db=Depends(get_db),
-    current_user=Depends(require_permission("update_user")),   # was: no auth at all
+    # PERMISSION: validate_data, NOT update_user.
+    # This endpoint performs SUBMITTED -> APPROVED, which is the DATA
+    # VALIDATION stage of the pipeline — the DataValidationOfficer owns it.
+    # It originally had no auth at all; an earlier fix wrongly locked it to
+    # update_user, which the DVO does not have, producing:
+    #   "RoleSchema.DataValidationOfficer is not allowed to perform 'update_user'"
+    # The later stages live elsewhere and keep their own permissions:
+    #   APPROVED -> VERIFIED            : /v1/ward-secretary/recommendation/...
+    #   VERIFIED -> CERTIFICATE_ISSUED  : /v1/ward-chairperson/recommendation/...
+    current_user=Depends(require_permission("validate_data")),
 ):
     letter = db.query(RecommendationLetterModel).filter(
         RecommendationLetterModel.letter_id == letter_id
