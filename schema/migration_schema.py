@@ -57,7 +57,7 @@ class ApplicantRequest(BaseModel):
     applicant_dob_ad: Optional[date] = None
     applicant_citizenship_no: str
     applicant_nationality: str = "NEPALESE"
-    applicant_occupation: Optional[OccupationType] = None
+    
     applicant_contact_no: Optional[str] = None
 
     @field_validator("applicant_full_name_np", mode="before")
