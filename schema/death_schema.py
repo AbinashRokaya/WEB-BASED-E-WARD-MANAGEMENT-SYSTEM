@@ -14,6 +14,22 @@ NEPALI_REGEX = re.compile(
 )
 
 
+def empty_str_to_none(value):
+    """Shared coercion for Optional[int] fields fed by form/text inputs.
+    A blank <input type="number"> (or any left-empty field) submits as
+    the string '' in the multipart/JSON payload, not as null/omitted —
+    Pydantic's int parser rejects '' outright, which is what was causing
+    the 422 on death_age_years/months/days. Any Optional[int] field in
+    this file that can come from a blank form field needs this applied
+    via a `mode="before"` field_validator, or it will hit the exact same
+    error the moment a user leaves it empty."""
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return value
+
+
 # ══════════════════════════════════════════════
 # Deceased (मृतकको व्यक्तिगत विवरण)
 # ══════════════════════════════════════════════
@@ -38,6 +54,16 @@ class DeceasedRequest(BaseModel):
     deceased_citizenship_no: Optional[str] = None
     deceased_occupation: Optional[str] = None
     deceased_other_id_no: Optional[str] = None
+
+    @field_validator(
+        "deceased_age_years",
+        "deceased_age_months",
+        "deceased_age_days",
+        mode="before"
+    )
+    @classmethod
+    def validate_age_fields(cls, value):
+        return empty_str_to_none(value)
 
     @field_validator(
         "deceased_nepali_first_name",
@@ -84,6 +110,16 @@ class UpdateDeceasedRequest(BaseModel):
     deceased_other_id_no: Optional[str] = None
 
     @field_validator(
+        "deceased_age_years",
+        "deceased_age_months",
+        "deceased_age_days",
+        mode="before"
+    )
+    @classmethod
+    def validate_age_fields(cls, value):
+        return empty_str_to_none(value)
+
+    @field_validator(
         "deceased_nepali_first_name",
         "deceased_nepali_middle_name",
         "deceased_nepali_last_name",
@@ -124,6 +160,16 @@ class DeathDetailRequest(BaseModel):
     residence_duration_months: Optional[int] = None
     residence_duration_days: Optional[int] = None
 
+    @field_validator(
+        "residence_duration_years",
+        "residence_duration_months",
+        "residence_duration_days",
+        mode="before"
+    )
+    @classmethod
+    def validate_residence_duration_fields(cls, value):
+        return empty_str_to_none(value)
+
 
 class DeathDetailResponse(DeathDetailRequest):
     death_detail_id: UUID
@@ -143,6 +189,16 @@ class UpdateDeathDetailRequest(BaseModel):
     residence_duration_years: Optional[int] = None
     residence_duration_months: Optional[int] = None
     residence_duration_days: Optional[int] = None
+
+    @field_validator(
+        "residence_duration_years",
+        "residence_duration_months",
+        "residence_duration_days",
+        mode="before"
+    )
+    @classmethod
+    def validate_residence_duration_fields(cls, value):
+        return empty_str_to_none(value)
 
 
 # ══════════════════════════════════════════════
@@ -199,6 +255,15 @@ class DeathAddressRequest(BaseModel):
     ward_nepali_municipality: Optional[str] = None
     ward_nepali_name: Optional[str] = None
 
+    # NOTE: deceased_ward_number / death_place_ward_number are required
+    # (plain `int`, not Optional) — an empty string there SHOULD fail
+    # validation, since those addresses are mandatory. Only the truly
+    # optional informant_ward_number gets the blank->None treatment.
+    @field_validator("informant_ward_number", mode="before")
+    @classmethod
+    def validate_informant_ward_number(cls, value):
+        return empty_str_to_none(value)
+
 
 class UpdateDeathAddressRequest(BaseModel):
     deceased_province: Optional[str] = None
@@ -223,6 +288,16 @@ class UpdateDeathAddressRequest(BaseModel):
     ward_nepali_district: Optional[str] = None
     ward_nepali_municipality: Optional[str] = None
     ward_nepali_name: Optional[str] = None
+
+    @field_validator(
+        "deceased_ward_number",
+        "death_place_ward_number",
+        "informant_ward_number",
+        mode="before"
+    )
+    @classmethod
+    def validate_ward_number_fields(cls, value):
+        return empty_str_to_none(value)
 
 
 class DeathAddressResponse(BaseModel):
