@@ -153,14 +153,64 @@ class RoleSchema(str,Enum):
     WardSecretary="wardsecretary"
     DataValidationOfficer="datavalidationofficer"
 
-Permission_Role={
-     RoleSchema.SuperAdmin:{"create_user", "read_user", "update_user", "delete_user"},
-     RoleSchema.Citizen:{"read_user","write_form"},
-     RoleSchema.WardChairperson:{"create_user", "read_user", "update_user"},
-     RoleSchema.WardSecretary:{"create_user", "read_user", "update_user"},
-     RoleSchema.DataValidationOfficer:{"read_user","validate_data"}
+# ══════════════════════════════════════════════════════════════════
+# PERMISSION MATRIX
+# ══════════════════════════════════════════════════════════════════
+#
+# BUG FIXED HERE: "issue_certificate" was used by SIX endpoints
+# (birth/death/migration/recommendation issue-certificate) but was never
+# listed in Action or granted to ANY role. require_permission() does
+#     allowed = Permission_Role.get(role_enum, set())
+#     if action not in allowed: raise 403
+# so every one of those endpoints returned 403 for every role, including
+# the Ward Chairperson. That is why the working flow went through
+# /approve with "update_user" instead — the intended endpoints were dead.
+#
+# Ward Secretary also gets issue_certificate: death_certificate_service
+# signs with "secretary OR chairperson", unlike birth/recommendation
+# which are chairperson-only.
+#
+# The document pipeline and who owns each step:
+#
+#   SUBMITTED --(DataValidationOfficer: validate_data)--> APPROVED
+#   APPROVED  --(WardSecretary:        update_user)-----> VERIFIED
+#   VERIFIED  --(WardChairperson:      issue_certificate)-> CERTIFICATE_ISSUED
+#
+Permission_Role = {
+    RoleSchema.SuperAdmin: {
+        "create_user", "read_user", "update_user", "delete_user",
+        "write_form", "validate_data", "issue_certificate",
+        "update_registration",
+    },
+    RoleSchema.Citizen: {
+        # A citizen uploads supporting documents to their OWN registration,
+        # which is what update_registration guards. Ownership itself is
+        # checked inside the endpoint; this only gates the action.
+        "read_user", "write_form", "update_registration",
+    },
+    RoleSchema.WardChairperson: {
+        "create_user", "read_user", "update_user", "issue_certificate",
+        "update_registration",
+    },
+    RoleSchema.WardSecretary: {
+        "create_user", "read_user", "update_user", "issue_certificate",
+        "update_registration",
+    },
+    RoleSchema.DataValidationOfficer: {
+        "read_user", "validate_data", "update_registration",
+    },
 }
-Action=Literal["create_user", "read_user", "update_user", "delete_user", "write_form", "validate_data"]
+
+Action = Literal[
+    "create_user",
+    "read_user",
+    "update_user",
+    "delete_user",
+    "write_form",
+    "validate_data",
+    "issue_certificate",     # was missing — see note above
+    "update_registration",   # also missing: used by birth upload-documents
+]
 
 
 class CitizenVerifyRequest(BaseModel):

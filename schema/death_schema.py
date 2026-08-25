@@ -14,6 +14,22 @@ NEPALI_REGEX = re.compile(
 )
 
 
+def empty_str_to_none(value):
+    """Shared coercion for Optional[int] fields fed by form/text inputs.
+    A blank <input type="number"> (or any left-empty field) submits as
+    the string '' in the multipart/JSON payload, not as null/omitted —
+    Pydantic's int parser rejects '' outright, which is what was causing
+    the 422 on death_age_years/months/days. Any Optional[int] field in
+    this file that can come from a blank form field needs this applied
+    via a `mode="before"` field_validator, or it will hit the exact same
+    error the moment a user leaves it empty."""
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip() == "":
+        return None
+    return value
+
+
 # ══════════════════════════════════════════════
 # Deceased (मृतकको व्यक्तिगत विवरण)
 # ══════════════════════════════════════════════
@@ -55,6 +71,16 @@ class DeceasedRequest(BaseModel):
         if isinstance(data, dict):
             return {k: (None if v == "" else v) for k, v in data.items()}
         return data
+
+    @field_validator(
+        "deceased_age_years",
+        "deceased_age_months",
+        "deceased_age_days",
+        mode="before"
+    )
+    @classmethod
+    def validate_age_fields(cls, value):
+        return empty_str_to_none(value)
 
     @field_validator(
         "deceased_nepali_first_name",
@@ -109,6 +135,16 @@ class UpdateDeceasedRequest(BaseModel):
         if isinstance(data, dict):
             return {k: (None if v == "" else v) for k, v in data.items()}
         return data
+
+    @field_validator(
+        "deceased_age_years",
+        "deceased_age_months",
+        "deceased_age_days",
+        mode="before"
+    )
+    @classmethod
+    def validate_age_fields(cls, value):
+        return empty_str_to_none(value)
 
     @field_validator(
         "deceased_nepali_first_name",

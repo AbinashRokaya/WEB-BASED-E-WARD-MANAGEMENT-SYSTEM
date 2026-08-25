@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from auth.current_user import require_permission
+from config import settings
 from database.db import get_db
 from enums.migration_enum import MigrationRegistrationStatus
 from model.migration_registration_model import (
@@ -31,7 +32,7 @@ from schema.migration_schema import (
     UpdateMigrationRegistrationRequest,
 )
 from services.migration_certificate_service import issue_certificate_for_migration_registration
-from services.email_service import send_certificate_ready_email
+from services.notification_service import notify_certificate_issued
 from utils.certificate_download import stream_certificate_pdf
 import logging
 
@@ -39,7 +40,8 @@ import cloudinary.uploader
 import config.cloudinary_config  # noqa: F401  (runs cloudinary.config() on import)
 
 logger = logging.getLogger(__name__)
-BACKEND_BASE_URL = os.environ.get("BACKEND_BASE_URL", "http://localhost:8000")
+# BACKEND_BASE_URL now lives in config/settings.py (it was duplicated
+# across four routers, which is exactly how such constants drift apart).
 
 router = APIRouter(
     prefix="/v1/migration-registration",
@@ -519,7 +521,11 @@ def reject_registration(
 
 
 @router.post("/{migration_id}/approve")
-def approve_registration(migration_id: UUID, db=Depends(get_db)):
+def approve_registration(
+    migration_id: UUID,
+    db=Depends(get_db),
+    current_user=Depends(require_permission("update_user")),   # was: no auth at all
+):
     try:
         registration = db.query(MigrationRegistrationModel).filter(
             MigrationRegistrationModel.migration_id == migration_id
@@ -639,30 +645,8 @@ def issue_migration_certificate(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    submitted_by = registration.submitted_by_user
-    submitted_by_email = getattr(submitted_by, "user_email", None) if submitted_by else None
-
-    if submitted_by_email:
-        download_url = f"{BACKEND_BASE_URL}/v1/migration-registration/{registration.migration_id}/certificate/download"
-        applicant_name = registration.applicant.applicant_full_name_en
-        background_tasks.add_task(
-            send_certificate_ready_email,
-            submitted_by_email,
-            applicant_name,
-            certificate.certificate_no,
-            download_url,
-        )
-        logger.info(f"Migration certificate email queued for {submitted_by_email}")
-    elif not submitted_by:
-        logger.warning(
-            f"Migration certificate {certificate.certificate_no} issued but registration.submitted_by_user "
-            f"is missing — no email sent."
-        )
-    else:
-        logger.warning(
-            f"Migration certificate {certificate.certificate_no} issued but user {submitted_by.user_id} "
-            f"has no user_email on file — no email sent."
-        )
+    # Was ~20 lines of duplicated recipient lookup + three log branches.
+    emailed = notify_certificate_issued(background_tasks, "migration", registration, certificate)
 
     return JSONResponse(
         status_code=201,
@@ -670,6 +654,7 @@ def issue_migration_certificate(
             "success": True,
             "status_code": 201,
             "message": "Certificate issued successfully",
+            "notification_sent": emailed,
             "data": CertificateResponse.model_validate(certificate).model_dump(mode="json"),
         },
     )
@@ -697,7 +682,7 @@ def verify_migration_certificate(cert_id: UUID, db=Depends(get_db)):
 
     registration = certificate.registration
     applicant = registration.applicant
-    pdf_url = f"{BACKEND_BASE_URL}/v1/migration-registration/{registration.migration_id}/certificate/download"
+    pdf_url = f"{settings.BACKEND_BASE_URL}/v1/migration-registration/{registration.migration_id}/certificate/download"
 
     return JSONResponse(
         status_code=200,

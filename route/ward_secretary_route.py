@@ -659,32 +659,31 @@ def forward_complaint_to_chairperson(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/complaint/{complaint_id}/reject")
-def reject_complaint(
-    complaint_id: UUID,
-    request: ComplaintRejectRequest,
-    db=Depends(get_db),
-    current_user=Depends(require_permission("update_user")),
+
+@router.post("/recommendation/{letter_id}/reject")
+def reject_recommendation_letter(
+    letter_id: UUID,
+    request: RecommendationRejectRequest,
+    db=Depends(get_db)
 ):
     try:
-        complaint = db.query(ComplaintModel).filter(
-            ComplaintModel.complaint_id == complaint_id
+        letter = db.query(RecommendationLetterModel).filter(
+            RecommendationLetterModel.letter_id == letter_id
         ).first()
-        if not complaint:
-            raise HTTPException(status_code=404, detail="Complaint not found")
+        if not letter:
+            raise HTTPException(status_code=404, detail="Letter not found")
 
-        if complaint.complaint_status != ComplaintStatus.APPROVED:
+        if letter.register_status != RecommendationStatus.APPROVED:          # ← was VERIFIED
             raise HTTPException(
                 status_code=400,
-                detail="Only APPROVED complaints can be rejected at this stage",
+                detail=f"Only APPROVED letters can be rejected (current status: {letter.register_status.value})"  # ← updated message
             )
 
-        complaint.complaint_status = ComplaintStatus.REJECTED
+        letter.register_status = RecommendationStatus.REJECTED
 
-        reject = ComplaintRejectModel(
-            complaint_id=complaint_id,
-            reject_text=request.reject_text,
-            rejected_by=current_user.user_id,
+        reject = RecommendationRejectModel(
+            letter_id=letter_id,
+            reject_text=request.reject_text
         )
         db.add(reject)
         db.commit()
@@ -695,9 +694,9 @@ def reject_complaint(
             content={
                 "success": True,
                 "status_code": 200,
-                "message": "Complaint rejected successfully",
-                "data": serialize(reject, ComplaintRejectResponse),
-            },
+                "message": "Letter rejected successfully",
+                "data": serialize(reject, RecommendationRejectResponse)
+            }
         )
 
     except HTTPException:
