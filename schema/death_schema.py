@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 from typing import Optional, List
 from uuid import UUID
 from enums.death_enum import (
@@ -38,6 +38,23 @@ class DeceasedRequest(BaseModel):
     deceased_citizenship_no: Optional[str] = None
     deceased_occupation: Optional[str] = None
     deceased_other_id_no: Optional[str] = None
+
+    # ── Normalizes blank form fields before field-level validation runs.
+    # The form sends "" for any optional field the user left empty.
+    # Optional[int] / Optional[date] reject "" outright (int_parsing /
+    # date_parsing) because Pydantic still tries to parse whatever is
+    # given — "" is not a valid int or date, only None is treated as
+    # "not provided". This converts "" -> None across the whole payload
+    # so blank optional fields behave as intended instead of failing
+    # validation. Required fields (deceased_first_name, deceased_last_name,
+    # deceased_gender) are untouched by this — if those are "" they should
+    # still fail with a clear "field required" / enum error.
+    @model_validator(mode="before")
+    @classmethod
+    def blank_strings_to_none(cls, data):
+        if isinstance(data, dict):
+            return {k: (None if v == "" else v) for k, v in data.items()}
+        return data
 
     @field_validator(
         "deceased_nepali_first_name",
@@ -83,6 +100,16 @@ class UpdateDeceasedRequest(BaseModel):
     deceased_occupation: Optional[str] = None
     deceased_other_id_no: Optional[str] = None
 
+    # Same reasoning as DeceasedRequest — this is an update payload where
+    # every field is already Optional, so blanking "" -> None is safe
+    # across the board here.
+    @model_validator(mode="before")
+    @classmethod
+    def blank_strings_to_none(cls, data):
+        if isinstance(data, dict):
+            return {k: (None if v == "" else v) for k, v in data.items()}
+        return data
+
     @field_validator(
         "deceased_nepali_first_name",
         "deceased_nepali_middle_name",
@@ -124,6 +151,19 @@ class DeathDetailRequest(BaseModel):
     residence_duration_months: Optional[int] = None
     residence_duration_days: Optional[int] = None
 
+    # death_date_bs is required, so it's excluded here — a blank required
+    # date should still fail with "field required", not silently become
+    # None and produce a less clear error later on.
+    @model_validator(mode="before")
+    @classmethod
+    def blank_optional_strings_to_none(cls, data):
+        if not isinstance(data, dict):
+            return data
+        return {
+            k: (None if (v == "" and k != "death_date_bs") else v)
+            for k, v in data.items()
+        }
+
 
 class DeathDetailResponse(DeathDetailRequest):
     death_detail_id: UUID
@@ -144,6 +184,14 @@ class UpdateDeathDetailRequest(BaseModel):
     residence_duration_months: Optional[int] = None
     residence_duration_days: Optional[int] = None
 
+    # Every field here is Optional, so a blanket "" -> None is safe.
+    @model_validator(mode="before")
+    @classmethod
+    def blank_strings_to_none(cls, data):
+        if isinstance(data, dict):
+            return {k: (None if v == "" else v) for k, v in data.items()}
+        return data
+
 
 # ══════════════════════════════════════════════
 # Informant (जानकारी दिने व्यक्तिको विवरण)
@@ -155,6 +203,18 @@ class InformantRequest(BaseModel):
     informant_contact_no: Optional[str] = None
     informant_signature_path: Optional[str] = None
     declared_date_bs: Optional[date] = None
+
+    # informant_name is required — excluded so a blank name still fails
+    # with "field required" rather than silently becoming None.
+    @model_validator(mode="before")
+    @classmethod
+    def blank_optional_strings_to_none(cls, data):
+        if not isinstance(data, dict):
+            return data
+        return {
+            k: (None if (v == "" and k != "informant_name") else v)
+            for k, v in data.items()
+        }
 
 
 class InformantResponse(InformantRequest):
@@ -169,6 +229,13 @@ class UpdateInformantRequest(BaseModel):
     informant_contact_no: Optional[str] = None
     informant_signature_path: Optional[str] = None
     declared_date_bs: Optional[date] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def blank_strings_to_none(cls, data):
+        if isinstance(data, dict):
+            return {k: (None if v == "" else v) for k, v in data.items()}
+        return data
 
 
 # ══════════════════════════════════════════════
@@ -199,6 +266,29 @@ class DeathAddressRequest(BaseModel):
     ward_nepali_municipality: Optional[str] = None
     ward_nepali_name: Optional[str] = None
 
+    # deceased_province/district/municipality/ward_number and
+    # death_place_province/district/municipality/ward_number are required
+    # — blanking those to None would just trade an int_parsing error for a
+    # "field required" error, so they're excluded. Everything else
+    # (informant_* and ward_nepali_* fields) is genuinely optional and
+    # safe to normalize.
+    _REQUIRED_FIELDS = {
+        "deceased_province", "deceased_district", "deceased_municipality",
+        "deceased_ward_number",
+        "death_place_province", "death_place_district",
+        "death_place_municipality", "death_place_ward_number",
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def blank_optional_strings_to_none(cls, data):
+        if not isinstance(data, dict):
+            return data
+        return {
+            k: (None if (v == "" and k not in cls._REQUIRED_FIELDS) else v)
+            for k, v in data.items()
+        }
+
 
 class UpdateDeathAddressRequest(BaseModel):
     deceased_province: Optional[str] = None
@@ -223,6 +313,14 @@ class UpdateDeathAddressRequest(BaseModel):
     ward_nepali_district: Optional[str] = None
     ward_nepali_municipality: Optional[str] = None
     ward_nepali_name: Optional[str] = None
+
+    # Every field here is Optional, so a blanket "" -> None is safe.
+    @model_validator(mode="before")
+    @classmethod
+    def blank_strings_to_none(cls, data):
+        if isinstance(data, dict):
+            return {k: (None if v == "" else v) for k, v in data.items()}
+        return data
 
 
 class DeathAddressResponse(BaseModel):
